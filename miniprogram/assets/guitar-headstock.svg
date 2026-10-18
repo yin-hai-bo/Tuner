@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="720" viewBox="0 0 560 720" role="img" aria-labelledby="title description">
+  <title id="title">Six-string guitar headstock</title>
+  <desc id="description">A front view of a three-a-side headstock. From top to bottom, the left tuning pegs are 4 D, 5 A, 6 E; the right tuning pegs are 3 G, 2 B, 1 E.</desc>
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#49372d"/>
+      <stop offset=".48" stop-color="#765644"/>
+      <stop offset="1" stop-color="#49372d"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#e0e6df"/>
+      <stop offset=".5" stop-color="#9ca99f"/>
+      <stop offset="1" stop-color="#65746b"/>
+    </linearGradient>
+    <g id="left-peg">
+      <rect x="115" y="-7" width="95" height="14" rx="5" fill="url(#metal)" stroke="#536058" stroke-width="2"/>
+      <rect x="68" y="-29" width="70" height="58" rx="22" fill="url(#metal)" stroke="#536058" stroke-width="2"/>
+      <path d="M82-17 Q103-24 124-17" fill="none" stroke="#eef3ec" stroke-opacity=".5" stroke-width="2"/>
+    </g>
+    <g id="post">
+      <circle r="20" fill="#302b25" stroke="#a58a68" stroke-width="2"/>
+      <circle r="13" fill="url(#metal)" stroke="#536058" stroke-width="2"/>
+      <circle r="4" fill="#3f4942"/>
+    </g>
+  </defs>
+
+  <!-- Metal shafts sit behind the wooden headstock. -->
+  <g id="tuning-keys">
+    <use href="#left-peg" transform="translate(0 190)"/>
+    <use href="#left-peg" transform="translate(0 310)"/>
+    <use href="#left-peg" transform="translate(0 430)"/>
+    <use href="#left-peg" transform="translate(560 190) scale(-1 1)"/>
+    <use href="#left-peg" transform="translate(560 310) scale(-1 1)"/>
+    <use href="#left-peg" transform="translate(560 430) scale(-1 1)"/>
+  </g>
+
+  <g id="headstock">
+    <path d="M210 680V574 Q174 528 166 472 L159 151 Q158 121 184 104 L226 76 Q280 110 334 76 L376 104 Q402 121 401 151 L394 472 Q386 528 350 574 V680Z" fill="url(#wood)" stroke="#281f1b" stroke-width="5"/>
+    <path d="M222 662V570 Q185 522 179 470 L172 151 Q171 130 192 116 L227 92 Q280 123 333 92 L368 116 Q389 130 388 151 L381 470 Q375 522 338 570 V662" fill="none" stroke="#b29470" stroke-opacity=".55" stroke-width="2"/>
+    <path d="M254 139 Q243 300 252 507 M305 139 Q318 303 306 507" fill="none" stroke="#c09c74" stroke-opacity=".12" stroke-width="2"/>
+    <path d="M268 151L280 140 292 151 280 162Z" fill="#d7c3a0"/>
+  </g>
+
+  <g id="tuning-posts">
+    <use href="#post" x="210" y="190"/>
+    <use href="#post" x="210" y="310"/>
+    <use href="#post" x="210" y="430"/>
+    <use href="#post" x="350" y="190"/>
+    <use href="#post" x="350" y="310"/>
+    <use href="#post" x="350" y="430"/>
+  </g>
+
+  <!-- Strings run from the nut to their own tuning post. -->
+  <g id="strings" fill="none" stroke="#e2ded0" stroke-linecap="round" stroke-linejoin="round">
+    <path id="string-6" d="M230 680V469 Q230 445 210 430" stroke-width="3.5"/>
+    <path id="string-5" d="M250 680V359 Q250 335 210 310" stroke-width="3"/>
+    <path id="string-4" d="M270 680V259 Q270 225 210 190" stroke-width="2.5"/>
+    <path id="string-3" d="M290 680V259 Q290 225 350 190" stroke-width="2"/>
+    <path id="string-2" d="M310 680V359 Q310 335 350 310" stroke-width="1.5"/>
+    <path id="string-1" d="M330 680V469 Q330 445 350 430" stroke-width="1"/>
+  </g>
+
+  <rect id="nut" x="210" y="576" width="140" height="16" rx="3" fill="#d8cbb1" stroke="#a89a80" stroke-width="2"/>
+  <path d="M230 577V591 M250 577V591 M270 577V591 M290 577V591 M310 577V591 M330 577V591" stroke="#675e4f" stroke-width="2"/>
+
+  <g id="labels" fill="#15231b" font-family="Arial, sans-serif" font-size="20" font-weight="700" text-anchor="middle" dominant-baseline="central">
+    <text x="103" y="190">4 · D</text>
+    <text x="103" y="310">5 · A</text>
+    <text x="103" y="430">6 · E</text>
+    <text x="457" y="190">3 · G</text>
+    <text x="457" y="310">2 · B</text>
+    <text x="457" y="430">1 · E</text>
+  </g>
+</svg>
