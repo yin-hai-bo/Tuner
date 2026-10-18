@@ -96,7 +96,7 @@ test('returning from settings updates language without losing the selected strin
 })
 
 function select(page, language) {
-  page.selectLanguage({ currentTarget: { dataset: { language } } })
+  page.selectLanguage({ detail: { value: language } })
 }
 
 test('selection updates text and navigation title and survives a new page', () => {

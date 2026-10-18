@@ -26,8 +26,8 @@ Component({
       wx.setTabBarItem({ index: 0, text: messages.tune })
       wx.setTabBarItem({ index: 1, text: messages.settings })
     },
-    selectLanguage(event: WechatMiniprogram.TouchEvent) {
-      const preference = event.currentTarget.dataset.language
+    selectLanguage(event: WechatMiniprogram.RadioGroupChange) {
+      const preference = event.detail.value
       if (preference !== 'system' && preference !== 'zh-CN' && preference !== 'en') return
       this.applyPreference(preference)
       try {
