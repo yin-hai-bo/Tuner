@@ -5,12 +5,55 @@ page {
 }
 
 .tuner {
+  position: relative;
   box-sizing: border-box;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 24rpx 32rpx 12rpx;
+}
+
+.pitch-grid {
+  position: absolute;
+  top: 144rpx;
+  left: 0;
+  right: 0;
+  bottom: 18%;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(172, 188, 180, .1) 1rpx, transparent 1rpx),
+    linear-gradient(90deg, rgba(172, 188, 180, .1) 1rpx, transparent 1rpx);
+  background-size: 40rpx 40rpx;
+  background-position: center top;
+}
+
+.pitch-grid::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2rpx;
+  transform: translateX(-50%);
+  background: rgba(196, 213, 204, .3);
+}
+
+.pitch-grid::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(#101413, transparent 12%, transparent 55%, #101413);
+}
+
+.toolbar,
+.headstock,
+.target {
+  position: relative;
+  z-index: 1;
 }
 
 .toolbar {

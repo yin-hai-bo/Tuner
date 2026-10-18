@@ -1,4 +1,5 @@
 <view class="tuner">
+  <view class="pitch-grid" aria-hidden="true"></view>
   <view class="toolbar">
     <label class="auto-control">
       <text>{{messages.automatic}}</text>
