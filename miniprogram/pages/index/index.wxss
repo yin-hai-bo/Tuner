@@ -29,3 +29,61 @@ page {
   color: #9aa7a1;
   font-size: 26rpx;
 }
+
+.selection-controls {
+  display: flex;
+  align-items: center;
+  margin-top: 40rpx;
+  gap: 32rpx;
+}
+
+.automatic {
+  margin: 0;
+  padding: 0 24rpx;
+  background: #202925;
+  color: #f2f5f3;
+  font-size: 26rpx;
+}
+
+.target {
+  margin-top: 24rpx;
+  font-size: 28rpx;
+}
+
+.headstock {
+  position: relative;
+  width: 560rpx;
+  height: 720rpx;
+  margin-top: 32rpx;
+}
+
+.headstock-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tuners {
+  position: absolute;
+  top: 0;
+  width: 12.5%; /* SVG tuning key width: 70 / 560. */
+  height: 100%;
+}
+.tuners.left { left: 12.142857%; } /* 68 / 560. */
+.tuners.right { left: 75.357143%; } /* 422 / 560. */
+
+.tuning-peg {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 8.055556%; /* SVG tuning key height: 58 / 720. */
+  margin: 0;
+  padding: 0;
+  border-radius: 22rpx;
+  background: transparent;
+}
+.tuning-peg::after { border: none; }
+.tuning-peg.selected {
+  background: rgba(54, 86, 71, .25);
+  box-shadow: 0 0 0 4rpx #92c9aa;
+}

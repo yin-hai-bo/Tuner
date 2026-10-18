@@ -5,6 +5,10 @@ const messages = {
     settings: '设置',
     language: '语言',
     followSystem: '跟随系统',
+    automatic: '自动',
+    manual: '手动',
+    string: '琴弦',
+    chooseString: '点击弦钮选择琴弦',
   },
   en: {
     title: 'Tuner',
@@ -12,6 +16,10 @@ const messages = {
     settings: 'Settings',
     language: 'Language',
     followSystem: 'Follow system',
+    automatic: 'Auto',
+    manual: 'Manual',
+    string: 'String',
+    chooseString: 'Tap a tuning peg to select a string',
   },
 }
 

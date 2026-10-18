@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 
-const chinese = { title: '校音器', subtitle: '六弦吉他 · 标准调弦', settings: '设置', language: '语言', followSystem: '跟随系统' }
-const english = { title: 'Tuner', subtitle: '6-string guitar · Standard tuning', settings: 'Settings', language: 'Language', followSystem: 'Follow system' }
+const chinese = { title: '校音器', subtitle: '六弦吉他 · 标准调弦', settings: '设置', language: '语言', followSystem: '跟随系统', automatic: '自动', manual: '手动', string: '琴弦', chooseString: '点击弦钮选择琴弦' }
+const english = { title: 'Tuner', subtitle: '6-string guitar · Standard tuning', settings: 'Settings', language: 'Language', followSystem: 'Follow system', automatic: 'Auto', manual: 'Manual', string: 'String', chooseString: 'Tap a tuning peg to select a string' }
 
 test('a saved selection overrides the system language', () => {
   assert.equal(getPreferredLanguage('en', 'zh_CN'), 'en')

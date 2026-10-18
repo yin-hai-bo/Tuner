@@ -4,16 +4,18 @@ import { stripTypeScriptTypes } from 'node:module'
 import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
+import { selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
 
 function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings') {
   const source = stripTypeScriptTypes(
     readFileSync(new URL(`../miniprogram/pages/${name}/${name}.ts`, import.meta.url), 'utf8')
-      .replace(/^import .* from .*\r?\n/, ''),
+      .replace(/^import .* from .*\r?\n/gm, ''),
   )
   let definition
   let title
   runInNewContext(source, {
     getMessages, getPreferredLanguage,
+    selectString, standardTuning, useAutomaticSelection,
     Component: value => { definition = value },
     wx: {
       getSystemInfoSync: () => ({ language: systemLanguage }),
@@ -37,6 +39,35 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   show()
   return { page, show, getTitle: () => title }
 }
+
+test('home connects all six tuning pegs and clears the target in auto mode', () => {
+  const { page } = createPage(new Map(), false, 'en', 'index')
+  assert.equal(page.data.selection.mode, 'auto')
+  assert.equal(page.data.selection.target, null)
+  assert.deepEqual(page.data.leftTuners.map(peg => peg.number), [4, 5, 6])
+  assert.deepEqual(page.data.rightTuners.map(peg => peg.number), [3, 2, 1])
+  for (const [number, note] of [[6, 'E'], [5, 'A'], [4, 'D'], [3, 'G'], [2, 'B'], [1, 'E']]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+    assert.deepEqual(page.data.selection, { mode: 'manual', target: { number, note } })
+  }
+  page.selectAutomatic()
+  assert.deepEqual(page.data.selection, { mode: 'auto', target: null })
+})
+
+test('returning from settings updates language without losing the selected string', () => {
+  const storage = new Map()
+  const { page, show } = createPage(storage, false, 'zh_CN', 'index')
+  page.selectTuner({ currentTarget: { dataset: { number: 6 } } })
+  const selection = page.data.selection
+  storage.set('preferredLanguage', 'en')
+  show()
+  assert.equal(page.data.messages.manual, 'Manual')
+  assert.strictEqual(page.data.selection, selection)
+  for (const number of [undefined, '1', 0, 7]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+    assert.strictEqual(page.data.selection, selection)
+  }
+})
 
 function select(page, language) {
   page.selectLanguage({ currentTarget: { dataset: { language } } })
