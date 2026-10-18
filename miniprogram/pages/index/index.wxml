@@ -1,4 +1,4 @@
 <view class="tuner">
-  <text class="title">校音器</text>
-  <text class="subtitle">六弦吉他 · 标准调弦</text>
+  <text class="title">{{messages.title}}</text>
+  <text class="subtitle">{{messages.subtitle}}</text>
 </view>
