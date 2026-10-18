@@ -1,20 +1,23 @@
 <view class="tuner">
-  <text class="title">{{messages.title}}</text>
-  <text class="subtitle">{{messages.subtitle}}</text>
-  <view class="selection-controls">
-    <text>{{selection.mode === 'auto' ? messages.automatic : messages.manual}}</text>
-    <button class="automatic" bindtap="selectAutomatic">{{messages.automatic}}</button>
+  <view class="toolbar">
+    <label class="auto-control">
+      <text>{{messages.automatic}}</text>
+      <switch checked="{{selection.mode === 'auto'}}" color="#00cba9" bindchange="toggleAutomatic" aria-label="{{messages.automatic}}" />
+    </label>
   </view>
-  <text class="target" wx:if="{{selection.target}}">{{messages.string}} {{selection.target.number}} · {{selection.target.note}}</text>
-  <text class="target" wx:else>{{messages.chooseString}}</text>
   <view class="headstock">
     <image class="headstock-image" src="/assets/guitar-headstock.svg" mode="aspectFit" aria-hidden="true"></image>
     <view class="tuners left">
-      <button wx:for="{{leftTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-label="{{messages.string}} {{item.number}} {{item.note}}"></button>
+      <view wx:for="{{leftTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
+        <text wx:if="{{selection.target && selection.target.number === item.number}}">{{item.number}} · {{item.note}}</text>
+      </view>
     </view>
     <view class="tuners right">
-      <button wx:for="{{rightTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-label="{{messages.string}} {{item.number}} {{item.note}}"></button>
+      <view wx:for="{{rightTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
+        <text wx:if="{{selection.target && selection.target.number === item.number}}">{{item.number}} · {{item.note}}</text>
+      </view>
     </view>
   </view>
-  <button class="settings" bindtap="openSettings">{{messages.settings}}</button>
+  <text class="target" wx:if="{{selection.target}}">{{messages.string}} {{selection.target.number}} · {{selection.target.note}}</text>
+  <text class="target" wx:else>{{messages.chooseString}}</text>
 </view>

@@ -21,6 +21,8 @@ Component({
       const messages = getMessages(getPreferredLanguage(savedLanguage, wx.getSystemInfoSync().language))
       this.setData({ messages })
       wx.setNavigationBarTitle({ title: messages.title })
+      wx.setTabBarItem({ index: 0, text: messages.tune })
+      wx.setTabBarItem({ index: 1, text: messages.settings })
     },
   },
   methods: {
@@ -29,11 +31,11 @@ Component({
       if (typeof number !== 'number') return
       this.setData({ selection: selectString(this.data.selection, number) })
     },
-    selectAutomatic() {
-      this.setData({ selection: useAutomaticSelection() })
-    },
-    openSettings() {
-      wx.navigateTo({ url: '/pages/settings/settings' })
+    toggleAutomatic(event: WechatMiniprogram.SwitchChange) {
+      const selection = event.detail.value
+        ? useAutomaticSelection()
+        : selectString(this.data.selection, 6)
+      this.setData({ selection })
     },
   },
 })

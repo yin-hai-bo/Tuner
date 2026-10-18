@@ -13,6 +13,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   )
   let definition
   let title
+  const tabs = []
   runInNewContext(source, {
     getMessages, getPreferredLanguage,
     selectString, standardTuning, useAutomaticSelection,
@@ -28,6 +29,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
         storage.set(key, value)
       },
       setNavigationBarTitle: value => { title = value.title },
+      setTabBarItem: value => { tabs[value.index] = value.text },
     },
   })
   const page = {
@@ -37,7 +39,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   }
   const show = () => definition.pageLifetimes.show.call(page)
   show()
-  return { page, show, getTitle: () => title }
+  return { page, show, getTitle: () => title, tabs }
 }
 
 test('home connects all six tuning pegs and clears the target in auto mode', () => {
@@ -50,8 +52,32 @@ test('home connects all six tuning pegs and clears the target in auto mode', () 
     page.selectTuner({ currentTarget: { dataset: { number } } })
     assert.deepEqual(page.data.selection, { mode: 'manual', target: { number, note } })
   }
-  page.selectAutomatic()
+  page.toggleAutomatic({ detail: { value: true } })
   assert.deepEqual(page.data.selection, { mode: 'auto', target: null })
+})
+
+test('turning off auto selects string 6 E, just like tapping its tuning peg', () => {
+  const { page } = createPage(new Map(), false, 'en', 'index')
+  page.toggleAutomatic({ detail: { value: false } })
+  assert.deepEqual(page.data.selection, selectString(useAutomaticSelection(), 6))
+  page.selectTuner({ currentTarget: { dataset: { number: 4 } } })
+  page.toggleAutomatic({ detail: { value: false } })
+  assert.deepEqual(page.data.selection, { mode: 'manual', target: { number: 6, note: 'E' } })
+  page.toggleAutomatic({ detail: { value: true } })
+  assert.deepEqual(page.data.selection, { mode: 'auto', target: null })
+})
+
+test('language changes update both tab labels on settings and when showing home', () => {
+  const storage = new Map()
+  const home = createPage(storage, false, 'zh_CN', 'index')
+  const settings = createPage(storage)
+  assert.deepEqual(home.tabs, ['校音', '设置'])
+  select(settings.page, 'en')
+  assert.deepEqual(settings.tabs, ['Tune', 'Settings'])
+  home.show()
+  assert.deepEqual(home.tabs, ['Tune', 'Settings'])
+  select(settings.page, 'system')
+  assert.deepEqual(settings.tabs, ['校音', '设置'])
 })
 
 test('returning from settings updates language without losing the selected string', () => {

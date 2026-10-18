@@ -10,6 +10,16 @@
     "navigationBarBackgroundColor": "#ffffff"
   },
   "style": "v2",
+  "tabBar": {
+    "color": "#9aa7a1",
+    "selectedColor": "#00cba9",
+    "backgroundColor": "#101413",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/index/index", "text": "校音" },
+      { "pagePath": "pages/settings/settings", "text": "设置" }
+    ]
+  },
   "componentFramework": "glass-easel",
   "lazyCodeLoading": "requiredComponents"
 }

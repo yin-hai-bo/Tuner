@@ -5,56 +5,40 @@ page {
 }
 
 .tuner {
+  box-sizing: border-box;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 64rpx 32rpx;
+  padding: 24rpx 32rpx 12rpx;
 }
 
-.title {
-  font-size: 56rpx;
-  font-weight: 600;
+.toolbar {
+  width: 100%;
+  margin-bottom: 32rpx;
 }
 
-.subtitle {
-  margin-top: 16rpx;
-  color: #9aa7a1;
-  font-size: 26rpx;
-}
-
-.settings {
-  margin-top: 32rpx;
-  padding: 0 24rpx;
-  background: #202925;
-  color: #9aa7a1;
-  font-size: 26rpx;
-}
-
-.selection-controls {
+.auto-control {
   display: flex;
   align-items: center;
-  margin-top: 40rpx;
-  gap: 32rpx;
-}
-
-.automatic {
-  margin: 0;
-  padding: 0 24rpx;
-  background: #202925;
-  color: #f2f5f3;
-  font-size: 26rpx;
+  width: fit-content;
+  gap: 12rpx;
+  font-size: 24rpx;
+  text-transform: uppercase;
 }
 
 .target {
-  margin-top: 24rpx;
+  flex-shrink: 0;
   font-size: 28rpx;
+  line-height: 40rpx;
 }
 
 .headstock {
   position: relative;
   width: 560rpx;
   height: 720rpx;
-  margin-top: 32rpx;
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 .headstock-image {
@@ -75,15 +59,19 @@ page {
 .tuning-peg {
   position: absolute;
   left: 0;
-  width: 100%;
-  height: 8.055556%; /* SVG tuning key height: 58 / 720. */
-  margin: 0;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 70rpx;
+  height: 58rpx;
   border-radius: 22rpx;
   background: transparent;
+  color: #15231b;
+  font-family: Arial, sans-serif;
+  font-size: 20rpx;
+  font-weight: 700;
 }
-.tuning-peg::after { border: none; }
 .tuning-peg.selected {
-  background: rgba(54, 86, 71, .25);
-  box-shadow: 0 0 0 4rpx #92c9aa;
+  background: linear-gradient(180deg, #9bffb0, #19ed68);
+  box-shadow: 0 0 16rpx rgba(25, 237, 104, .65);
 }

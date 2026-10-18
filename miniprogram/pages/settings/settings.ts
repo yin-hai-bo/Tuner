@@ -23,6 +23,8 @@ Component({
       const messages = getMessages(getPreferredLanguage(preference, systemLanguage))
       this.setData({ preference, messages, followSystem: getMessages(systemLanguage).followSystem })
       wx.setNavigationBarTitle({ title: messages.settings })
+      wx.setTabBarItem({ index: 0, text: messages.tune })
+      wx.setTabBarItem({ index: 1, text: messages.settings })
     },
     selectLanguage(event: WechatMiniprogram.TouchEvent) {
       const preference = event.currentTarget.dataset.language
