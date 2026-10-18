@@ -1,9 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getMessages } from '../miniprogram/utils/i18n.ts'
+import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 
 const chinese = { title: '校音器', subtitle: '六弦吉他 · 标准调弦' }
 const english = { title: 'Tuner', subtitle: '6-string guitar · Standard tuning' }
+
+test('a saved selection overrides the system language', () => {
+  assert.equal(getPreferredLanguage('en', 'zh_CN'), 'en')
+  assert.equal(getPreferredLanguage('zh-CN', 'en'), 'zh-CN')
+})
+
+for (const saved of [undefined, null, '', 'fr', 'zh', 42, {}]) {
+  test(`invalid saved preference ${JSON.stringify(saved)} follows the system language`, () => {
+    assert.equal(getPreferredLanguage(saved, 'zh_CN'), 'zh-CN')
+    assert.equal(getPreferredLanguage(saved, 'en'), 'en')
+    assert.equal(getPreferredLanguage(saved, 'ja'), 'en')
+  })
+}
 
 for (const language of ['zh', 'zh_CN', 'zh-CN', 'ZH_cn']) {
   test(`${language} uses Simplified Chinese`, () => {

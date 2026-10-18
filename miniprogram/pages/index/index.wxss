@@ -21,3 +21,21 @@ page {
   color: #9aa7a1;
   font-size: 26rpx;
 }
+
+.languages {
+  display: flex;
+  margin-top: 32rpx;
+}
+
+.language {
+  margin: 0 8rpx;
+  padding: 0 24rpx;
+  background: #202925;
+  color: #9aa7a1;
+  font-size: 26rpx;
+}
+
+.language.selected {
+  color: #f2f5f3;
+  background: #365647;
+}

@@ -14,3 +14,8 @@ export function getMessages(language: string) {
   const locale = normalized === 'zh' || normalized === 'zh-cn' ? 'zh-CN' : 'en'
   return messages[locale]
 }
+
+export function getPreferredLanguage(savedLanguage: unknown, systemLanguage: string) {
+  if (savedLanguage === 'zh-CN' || savedLanguage === 'en') return savedLanguage
+  return getMessages(systemLanguage) === messages['zh-CN'] ? 'zh-CN' : 'en'
+}
