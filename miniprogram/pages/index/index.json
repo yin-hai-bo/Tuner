@@ -1,4 +1,6 @@
 {
-  "usingComponents": {
-  }
+  "navigationBarTitleText": "校音器",
+  "navigationBarTextStyle": "white",
+  "navigationBarBackgroundColor": "#101413",
+  "usingComponents": {}
 }
