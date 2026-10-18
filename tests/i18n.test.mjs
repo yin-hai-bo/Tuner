@@ -2,16 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 
-const chinese = { title: '校音器', subtitle: '六弦吉他 · 标准调弦' }
-const english = { title: 'Tuner', subtitle: '6-string guitar · Standard tuning' }
+const chinese = { title: '校音器', subtitle: '六弦吉他 · 标准调弦', settings: '设置', language: '语言', followSystem: '跟随系统' }
+const english = { title: 'Tuner', subtitle: '6-string guitar · Standard tuning', settings: 'Settings', language: 'Language', followSystem: 'Follow system' }
 
 test('a saved selection overrides the system language', () => {
   assert.equal(getPreferredLanguage('en', 'zh_CN'), 'en')
   assert.equal(getPreferredLanguage('zh-CN', 'en'), 'zh-CN')
 })
 
-for (const saved of [undefined, null, '', 'fr', 'zh', 42, {}]) {
-  test(`invalid saved preference ${JSON.stringify(saved)} follows the system language`, () => {
+for (const saved of ['system', undefined, null, '', 'fr', 'zh', 42, {}]) {
+  test(`preference ${JSON.stringify(saved)} resolves using the system language`, () => {
     assert.equal(getPreferredLanguage(saved, 'zh_CN'), 'zh-CN')
     assert.equal(getPreferredLanguage(saved, 'en'), 'en')
     assert.equal(getPreferredLanguage(saved, 'ja'), 'en')

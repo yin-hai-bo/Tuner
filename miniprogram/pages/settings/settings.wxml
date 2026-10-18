@@ -1,0 +1,6 @@
+<view class="settings">
+  <text class="heading">{{messages.language}}</text>
+  <button class="option {{preference === 'system' ? 'selected' : ''}}" data-language="system" bindtap="selectLanguage">{{followSystem}}</button>
+  <button class="option {{preference === 'zh-CN' ? 'selected' : ''}}" data-language="zh-CN" bindtap="selectLanguage">简体中文</button>
+  <button class="option {{preference === 'en' ? 'selected' : ''}}" data-language="en" bindtap="selectLanguage">English</button>
+</view>

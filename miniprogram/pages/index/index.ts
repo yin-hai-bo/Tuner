@@ -4,35 +4,24 @@ const languageStorageKey = 'preferredLanguage'
 
 Component({
   data: {
-    language: 'en',
     messages: getMessages('en'),
   },
-  lifetimes: {
-    attached() {
+  pageLifetimes: {
+    show() {
       let savedLanguage: unknown
       try {
         savedLanguage = wx.getStorageSync(languageStorageKey)
       } catch {
         // Storage may be unavailable; continue with the system language.
       }
-      this.applyLanguage(getPreferredLanguage(savedLanguage, wx.getSystemInfoSync().language))
+      const messages = getMessages(getPreferredLanguage(savedLanguage, wx.getSystemInfoSync().language))
+      this.setData({ messages })
+      wx.setNavigationBarTitle({ title: messages.title })
     },
   },
   methods: {
-    applyLanguage(language: string) {
-      const messages = getMessages(language)
-      this.setData({ language, messages })
-      wx.setNavigationBarTitle({ title: messages.title })
-    },
-    selectLanguage(event: WechatMiniprogram.TouchEvent) {
-      const language = event.currentTarget.dataset.language
-      if (language !== 'zh-CN' && language !== 'en') return
-      this.applyLanguage(language)
-      try {
-        wx.setStorageSync(languageStorageKey, language)
-      } catch {
-        // The selection still applies to the current page if saving fails.
-      }
+    openSettings() {
+      wx.navigateTo({ url: '/pages/settings/settings' })
     },
   },
 })

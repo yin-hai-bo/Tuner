@@ -1,0 +1,16 @@
+page {
+  min-height: 100vh;
+  background: #101413;
+  color: #f2f5f3;
+}
+
+.settings { padding: 48rpx 32rpx; }
+.heading { font-size: 32rpx; }
+.option {
+  margin-top: 24rpx;
+  background: #202925;
+  color: #9aa7a1;
+  font-size: 28rpx;
+  text-align: left;
+}
+.option.selected { background: #365647; color: #f2f5f3; }

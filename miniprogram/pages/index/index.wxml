@@ -1,8 +1,5 @@
 <view class="tuner">
   <text class="title">{{messages.title}}</text>
   <text class="subtitle">{{messages.subtitle}}</text>
-  <view class="languages">
-    <button class="language {{language === 'zh-CN' ? 'selected' : ''}}" data-language="zh-CN" bindtap="selectLanguage" aria-label="简体中文" aria-role="button">简体中文</button>
-    <button class="language {{language === 'en' ? 'selected' : ''}}" data-language="en" bindtap="selectLanguage" aria-label="English" aria-role="button">English</button>
-  </view>
+  <button class="settings" bindtap="openSettings">{{messages.settings}}</button>
 </view>

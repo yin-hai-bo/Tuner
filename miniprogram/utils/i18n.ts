@@ -2,10 +2,16 @@ const messages = {
   'zh-CN': {
     title: '校音器',
     subtitle: '六弦吉他 · 标准调弦',
+    settings: '设置',
+    language: '语言',
+    followSystem: '跟随系统',
   },
   en: {
     title: 'Tuner',
     subtitle: '6-string guitar · Standard tuning',
+    settings: 'Settings',
+    language: 'Language',
+    followSystem: 'Follow system',
   },
 }
 
