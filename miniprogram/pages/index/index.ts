@@ -1,17 +1,15 @@
 import { getMessages, getPreferredLanguage } from '../../utils/i18n'
+import { createAutomaticStringConfirmation } from '../../utils/automatic-string-confirmation'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../../utils/tuning-selection'
 
 const languageStorageKey = 'preferredLanguage'
-let referenceAudio: WechatMiniprogram.InnerAudioContext | undefined
 let trailTimer: ReturnType<typeof setInterval> | undefined
+const confirmAutomaticString = createAutomaticStringConfirmation()
 
 Component({
   data: {
     messages: getMessages('en'),
     pluckHint: getMessages('en').pluckString,
-    isReferencePlaying: false,
-    referencePlaybackId: 0,
-    highlightedStrings: [] as { id: number; number: number }[],
     selection: useAutomaticSelection(),
     leftTuners: standardTuning.slice(0, 3).reverse(),
     rightTuners: standardTuning.slice(3),
@@ -34,13 +32,11 @@ Component({
   lifetimes: {
     detached() {
       this.stopPitchTrail()
-      this.stopReference()
     },
   },
   pageLifetimes: {
     hide() {
       this.stopPitchTrail()
-      this.stopReference()
       this.updateDebugReading('silent')
     },
     show() {
@@ -63,15 +59,17 @@ Component({
   },
   methods: {
     stopPitchTrail() {
+      confirmAutomaticString(null, Date.now())
       if (trailTimer !== undefined) clearInterval(trailTimer)
       trailTimer = undefined
       this.setData({ pitchTrail: [] })
     },
     samplePitchTrail() {
+      if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
       const now = Date.now()
-      const { pitchTrail, debugOpen, debugReading, isReferencePlaying, debugOffset, debugMarkerColor } = this.data
+      const { pitchTrail, debugOpen, debugReading, debugOffset, debugMarkerColor } = this.data
       const points = pitchTrail.filter(point => point.id > now - 20000)
-      if (debugOpen && debugReading && !isReferencePlaying) {
+      if (debugOpen && debugReading) {
         points.push({ id: now, offset: debugOffset,
           color: this.data.debugInTune ? '#16834b' : debugMarkerColor })
       }
@@ -89,9 +87,12 @@ Component({
       const { debugIndex, debugCents, selection } = this.data
       const base = getStringFrequency(standardTuning[debugIndex].number)!
       const frequency = base * 2 ** (debugCents / 1200)
-      const reading = state === 'tone'
+      const candidate = state === 'tone'
         ? getPitchReading(frequency, selection.mode === 'manual' ? selection.target.number : undefined)
         : null
+      const confirmed = confirmAutomaticString(
+        selection.mode === 'auto' && candidate ? candidate.target.number : null, Date.now())
+      const reading = selection.mode === 'manual' || confirmed === candidate?.target.number ? candidate : null
       const cents = reading ? Math.round(reading.cents) : 0
       const distance = reading ? Math.abs(reading.cents) : 0
       // Allow only negligible floating-point error at the exact 2-cent boundary.
@@ -99,7 +100,7 @@ Component({
       const redness = Math.max(0, Math.min(1, (distance - 2) / 98))
       const debugMarkerColor = !reading || debugInTune ? '#f2f5f3'
         : `rgb(244, ${Math.round(200 - 130 * redness)}, ${Math.round(78 - 8 * redness)})`
-      const debugHintKey = !reading ? 'unreliableInput'
+      const debugHintKey = !reading ? (state === 'uncertain' ? 'unreliableInput' : 'pluckString')
         : debugInTune ? 'holdPitch' : reading.cents < 0 ? 'pitchLow' : 'pitchHigh'
       this.setData({ debugState: state, debugFrequency: state === 'tone' ? frequency.toFixed(3) : '',
         debugReading: reading, debugDeviation: cents,
@@ -123,48 +124,10 @@ Component({
       const state = event.currentTarget.dataset.state
       if (state === 'tone' || state === 'silent' || state === 'uncertain') this.updateDebugReading(state)
     },
-    stopReference() {
-      const audio = referenceAudio
-      referenceAudio = undefined
-      if (audio) {
-        audio.stop()
-        audio.destroy()
-      }
-      if (this.data.isReferencePlaying) {
-        this.setData({ isReferencePlaying: false, highlightedStrings: [] })
-        this.updatePluckHint()
-      }
-    },
-    playReference(number: number) {
-      this.stopReference()
-      const audio = wx.createInnerAudioContext()
-      referenceAudio = audio
-      audio.onPlay(() => {
-        if (referenceAudio !== audio) return
-        const id = this.data.referencePlaybackId + 1
-        this.setData({
-          isReferencePlaying: true,
-          referencePlaybackId: id,
-          highlightedStrings: [{ id, number }],
-        })
-        this.updatePluckHint()
-      })
-      audio.onEnded(() => {
-        if (referenceAudio === audio) this.stopReference()
-      })
-      audio.onError(() => {
-        if (referenceAudio !== audio) return
-        this.stopReference()
-        wx.showToast({ title: this.data.messages.referenceUnavailable, icon: 'none' })
-      })
-      audio.src = `/assets/tones/string-${number}.wav`
-      audio.play()
-    },
     updatePluckHint() {
-      const { selection, messages, isReferencePlaying } = this.data
-      const manualHint = isReferencePlaying ? messages.calibratingString : messages.pluckSelectedString
+      const { selection, messages } = this.data
       const pluckHint = selection.mode === 'manual'
-        ? manualHint
+        ? messages.pluckSelectedString
           .replace('{number}', String(selection.target.number))
           .replace('{note}', selection.target.note)
         : messages.pluckString
@@ -177,7 +140,6 @@ Component({
       if (selection === this.data.selection) return
       this.setData({ selection })
       this.updatePluckHint()
-      this.playReference(number)
       this.updateDebugReading(this.data.debugState)
     },
     toggleAutomatic(event: WechatMiniprogram.SwitchChange) {
@@ -186,8 +148,6 @@ Component({
         : selectString(this.data.selection, 6)
       this.setData({ selection })
       this.updatePluckHint()
-      if (event.detail.value) this.stopReference()
-      else this.playReference(6)
       this.updateDebugReading(this.data.debugState)
     },
   },
