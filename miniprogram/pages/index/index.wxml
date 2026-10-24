@@ -45,11 +45,13 @@
     </view>
     <view class="tuners left">
       <view wx:for="{{leftTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}} {{debugOpen && !isReferencePlaying && debugAutoTarget === item.number ? 'detected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
+        <image class="tuning-peg-highlight" src="/assets/tuning-peg-highlight.svg" mode="scaleToFill" aria-hidden="true"></image>
         <text wx:if="{{(selection.target && selection.target.number === item.number) || (debugOpen && !isReferencePlaying && debugAutoTarget === item.number)}}">{{item.number}} · {{item.note}}</text>
       </view>
     </view>
     <view class="tuners right">
       <view wx:for="{{rightTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}} {{debugOpen && !isReferencePlaying && debugAutoTarget === item.number ? 'detected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
+        <image class="tuning-peg-highlight" src="/assets/tuning-peg-highlight.svg" mode="scaleToFill" aria-hidden="true"></image>
         <text wx:if="{{(selection.target && selection.target.number === item.number) || (debugOpen && !isReferencePlaying && debugAutoTarget === item.number)}}">{{item.number}} · {{item.note}}</text>
       </view>
     </view>
