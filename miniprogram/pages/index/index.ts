@@ -1,6 +1,7 @@
 import { getMessages, getPreferredLanguage } from '../../utils/i18n'
 import { createAutomaticStringConfirmation } from '../../utils/automatic-string-confirmation'
 import { createStableTuningConfirmation } from '../../utils/stable-tuning'
+import { createSuccessConfirmation, createSuccessSound } from '../../utils/success-sound'
 import { createPcmRecorder, RecordingState } from '../../utils/pcm-recorder'
 import { createPcmPitchReader, PitchInputState } from '../../utils/pcm-pitch'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../../utils/tuning-selection'
@@ -9,6 +10,8 @@ const languageStorageKey = 'preferredLanguage'
 let trailTimer: ReturnType<typeof setInterval> | undefined
 const confirmAutomaticString = createAutomaticStringConfirmation()
 const confirmStableTuning = createStableTuningConfirmation()
+const confirmSuccess = createSuccessConfirmation()
+let successPlaying = false
 type RecordingPage = {
   data: { microphonePermission: string; recordingRequested: boolean }
   setData: (data: Record<string, unknown>) => void
@@ -23,6 +26,12 @@ let permissionEpoch = 0
 let lastLiveInputAt: number | null = null
 let lastReadingAt: number | null = null
 const pcmPitch = createPcmPitchReader((frequency, state) => recordingPage?.updateLiveReading(frequency, state))
+const successSound = createSuccessSound(() => wx.createInnerAudioContext(), playing => {
+  successPlaying = playing
+  pcmPitch.reset()
+  lastLiveInputAt = playing ? null : Date.now()
+  if (!playing && lastReadingAt !== null) lastReadingAt = Date.now()
+})
 
 Component({
   data: {
@@ -97,11 +106,12 @@ Component({
         pcmRecorder = createPcmRecorder(wx.getRecorderManager(),
           frame => {
             recordingPage?.setData({ pcmBytes: frame.byteLength })
-            pcmPitch.push(frame)
+            if (!successPlaying) pcmPitch.push(frame)
           },
           state => {
             recordingState = state
             if (state !== 'recording') {
+              this.resetSuccessFeedback()
               pcmPitch.reset()
               recordingPage?.setData({ liveFrequency: '' })
               recordingPage?.clearPitchReading()
@@ -124,6 +134,7 @@ Component({
     },
     leaveMicrophone() {
       if (recordingPage !== this) return
+      this.resetSuccessFeedback()
       permissionEpoch++
       recordingPage = undefined
       pcmPitch.reset()
@@ -179,6 +190,7 @@ Component({
       })
     },
     stopPitchTrail() {
+      this.resetSuccessFeedback()
       lastReadingAt = null
       confirmAutomaticString(null, Date.now())
       confirmStableTuning(null, 0, Date.now())
@@ -187,6 +199,7 @@ Component({
       this.setData({ pitchTrail: [], pitchStable: false })
     },
     samplePitchTrail() {
+      if (successPlaying) return
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
       const now = Date.now()
       if (!this.data.debugOpen && lastLiveInputAt !== null && now - lastLiveInputAt >= 1000) {
@@ -206,6 +219,7 @@ Component({
     },
     toggleDebugPanel() {
       if (!this.data.debugEnabled) return
+      this.resetSuccessFeedback()
       this.setData({ debugOpen: !this.data.debugOpen })
       this.clearPitchReading()
     },
@@ -214,6 +228,7 @@ Component({
       this.applyPitchReading(null, 'silent')
     },
     updateLiveReading(frequency: number | null, state: PitchInputState) {
+      if (successPlaying) return
       lastLiveInputAt = Date.now()
       this.setData({ liveFrequency: frequency === null ? '' : frequency.toFixed(2) })
       if (!this.data.debugOpen) this.applyPitchReading(frequency, state)
@@ -226,6 +241,7 @@ Component({
       this.applyPitchReading(state === 'tone' ? frequency : null, state)
     },
     applyPitchReading(frequency: number | null, state: PitchInputState) {
+      if (successPlaying) return
       const now = Date.now()
       const holding = lastReadingAt !== null && now - lastReadingAt < 1000 && now >= lastReadingAt
       if (state === 'silent' && holding && this.data.debugReading) {
@@ -258,6 +274,11 @@ Component({
         debugOffset: reading ? Math.max(-40, Math.min(40, reading.cents * .4)) : 0,
         debugAutoTarget: reading && selection.mode === 'auto' ? reading.target.number : 0,
         debugHintKey, debugInTune, debugMarkerColor, pitchStable })
+      if (confirmSuccess.update(reading?.target.number ?? null, reading?.cents ?? 0, stable)) successSound.play()
+    },
+    resetSuccessFeedback() {
+      successSound.stop()
+      confirmSuccess.reset()
     },
     debugSelectString(event: WechatMiniprogram.PickerChange) {
       const index = Number(event.detail.value)
@@ -289,6 +310,7 @@ Component({
       if (typeof number !== 'number') return
       const selection = selectString(this.data.selection, number)
       if (selection === this.data.selection) return
+      this.resetSuccessFeedback()
       this.setData({ selection })
       lastReadingAt = null
       confirmStableTuning(null, 0, Date.now())
@@ -297,6 +319,7 @@ Component({
       else this.clearPitchReading()
     },
     toggleAutomatic(event: WechatMiniprogram.SwitchChange) {
+      this.resetSuccessFeedback()
       const selection = event.detail.value
         ? useAutomaticSelection()
         : selectString(this.data.selection, 6)

@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 import { createAutomaticStringConfirmation } from '../miniprogram/utils/automatic-string-confirmation.ts'
 import { createStableTuningConfirmation } from '../miniprogram/utils/stable-tuning.ts'
+import { createSuccessConfirmation } from '../miniprogram/utils/success-sound.ts'
 import { createPcmRecorder } from '../miniprogram/utils/pcm-recorder.ts'
 import { detectPitch } from '../miniprogram/utils/pitch-detection.ts'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
@@ -27,6 +28,13 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   }
   let now = 0, timerId = 0
   const timers = new Map()
+  const timeouts = new Map()
+  const soundSource = stripTypeScriptTypes(readFileSync(new URL('../miniprogram/utils/success-sound.ts', import.meta.url), 'utf8')
+    .replaceAll('export function', 'function'))
+  const createSuccessSound = runInNewContext(`${soundSource}\ncreateSuccessSound`, {
+    setTimeout: (callback, delay) => { timeouts.set(++timerId, { callback, at: now + delay }); return timerId },
+    clearTimeout: id => timeouts.delete(id),
+  })
   const pcmSource = stripTypeScriptTypes(readFileSync(new URL('../miniprogram/utils/pcm-pitch.ts', import.meta.url), 'utf8')
     .replace(/^import .*\r?\n/gm, '').replace('export function', 'function'))
   const createPcmPitchReader = runInNewContext(`${pcmSource}\ncreatePcmPitchReader`, { detectPitch })
@@ -37,12 +45,18 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
     getMessages, getPreferredLanguage,
     createAutomaticStringConfirmation,
     createStableTuningConfirmation,
+    createSuccessConfirmation, createSuccessSound,
     createPcmRecorder,
     createPcmPitchReader,
     getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection,
     Component: value => { definition = value },
     wx: {
-      createInnerAudioContext: () => { audios.push({}); return {} },
+      createInnerAudioContext: () => {
+        const audio = { play() {}, stop() {}, destroy() { this.destroyed = true },
+          onEnded(fn) { this.ended = fn }, onError(fn) { this.error = fn } }
+        audios.push(audio)
+        return audio
+      },
       getSetting: options => options.success({ authSetting: { 'scope.record': true } }),
       getRecorderManager: () => recorder,
       getFileSystemManager: () => ({ unlink: options => { deletedFiles.push(options.filePath); options.success() } }),
@@ -71,7 +85,11 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   show()
   const hide = () => definition.pageLifetimes.hide.call(page)
   const detach = () => definition.lifetimes.detached.call(page)
-  const tick = (elapsed = 100) => { now += elapsed; for (const callback of timers.values()) callback() }
+  const tick = (elapsed = 100) => {
+    now += elapsed
+    for (const [id, timer] of timeouts) if (timer.at <= now) { timeouts.delete(id); timer.callback() }
+    for (const callback of timers.values()) callback()
+  }
   return { page, show, hide, detach, tick, timers, getTitle: () => title, tabs, audios,
     recordingEvents, recordingStarts, deletedFiles, get recordingStops() { return recordingStops } }
 }
@@ -236,7 +254,7 @@ test('live PCM shows the tuned check only after 500ms and resets on mode changes
 })
 
 test('stable tuning starts after automatic string confirmation, not at the first candidate', () => {
-  const { page, tick } = createPage(new Map(), false, 'en', 'index', 'android')
+  const { page, tick, audios } = createPage(new Map(), false, 'en', 'index', 'android')
   const input = () => page.updateLiveReading(getStringFrequency(6), 'tone')
   input()
   tick(300)
@@ -248,6 +266,7 @@ test('stable tuning starts after automatic string confirmation, not at the first
   tick(1)
   input()
   assert.equal(page.data.pitchStable, true)
+  audios[0].ended()
   page.updateLiveReading(null, 'uncertain')
   assert.equal(page.data.pitchStable, false)
 })
@@ -445,7 +464,7 @@ test('permission API errors clear the busy state and allow retry without claimin
 })
 
 test('pitch trail samples marker position and color, preserves history and expires old points', () => {
-  const { page, tick } = createPage(new Map(), false, 'en', 'index')
+  const { page, tick, audios } = createPage(new Map(), false, 'en', 'index')
   tick()
   assert.equal(page.data.pitchTrail.length, 0)
   page.toggleDebugPanel()
@@ -458,7 +477,7 @@ test('pitch trail samples marker position and color, preserves history and expir
   tick()
   assert.equal(page.data.pitchTrail[0], first)
   assert.equal(page.data.pitchTrail[1].color, '#16834b')
-  for (let i = 0; i < 210; i++) tick()
+  for (let i = 0; i < 210; i++) { tick(); audios.at(-1)?.ended() }
   assert.equal(page.data.pitchTrail.length, 200)
   assert.ok(!page.data.pitchTrail.includes(first))
   for (const state of ['silent', 'uncertain']) {
@@ -539,7 +558,72 @@ test('unreliable input, page changes and manual mode discard automatic confirmat
   assert.equal(timers.size, 0)
 })
 
-test('debug controls simulate all six strings and signed offsets without playing audio', () => {
+test('live success plays once, ignores speaker input and resumes with fresh PCM', () => {
+  const { page, tick, audios, recordingEvents } = createPage(new Map(), false, 'en', 'index', 'ios')
+  page.toggleAutomatic({ detail: { value: false } })
+  recordingEvents.Start()
+  const input = cents => recordingEvents.FrameRecorded({ frameBuffer: pcmTone(getStringFrequency(6) * 2 ** (cents / 1200)) })
+  input(0)
+  tick(499)
+  input(0)
+  assert.equal(audios.length, 0)
+  tick(1)
+  input(0)
+  assert.equal(audios.length, 1)
+  input(50)
+  page.updateLiveReading(null, 'uncertain')
+  tick(500)
+  assert.equal(page.data.pitchStable, true)
+  assert.equal(page.data.debugHintKey, 'inTune')
+  audios[0].ended()
+  input(0)
+  tick(500)
+  input(0)
+  assert.equal(audios.length, 1)
+  // Silence and small deviations cannot re-arm the sound.
+  page.updateLiveReading(null, 'silent')
+  tick(1000)
+  input(4)
+  input(0)
+  tick(500)
+  input(0)
+  assert.equal(audios.length, 1)
+  input(-6)
+  input(0)
+  tick(500)
+  input(0)
+  assert.equal(audios.length, 2)
+})
+
+for (const action of ['hide', 'detach', 'interrupted', 'selection', 'automatic', 'debug', 'error', 'timeout']) {
+  test(`${action} releases success playback and allows fresh tuning`, () => {
+    const { page, tick, audios, recordingEvents, hide, detach, show } = createPage(new Map(), false, 'en', 'index')
+    page.toggleAutomatic({ detail: { value: false } })
+    recordingEvents.Start()
+    const input = () => page.updateLiveReading(getStringFrequency(6), 'tone')
+    input()
+    tick(500)
+    input()
+    assert.equal(audios.length, 1)
+    if (action === 'hide') { hide(); show() }
+    if (action === 'detach') { detach(); show() }
+    if (action === 'interrupted') recordingEvents.InterruptionBegin()
+    if (action === 'selection') page.selectTuner({ currentTarget: { dataset: { number: 5 } } })
+    if (action === 'automatic') page.toggleAutomatic({ detail: { value: true } })
+    if (action === 'debug') page.toggleDebugPanel()
+    if (action === 'error') audios[0].error()
+    if (action === 'timeout') tick(1000)
+    assert.equal(audios[0].destroyed, true)
+    const frequency = getStringFrequency(action === 'selection' ? 5 : 6) * 2 ** (10 / 1200)
+    page.applyPitchReading(frequency, 'tone')
+    tick(300)
+    page.applyPitchReading(frequency, 'tone')
+    assert.equal(page.data.pitchStable, false)
+    assert.equal(page.data.debugHintKey, 'pitchHigh')
+  })
+}
+
+test('debug controls simulate all six strings and signed offsets without premature success audio', () => {
   const { page, audios, tick } = createPage(new Map(), false, 'zh_CN', 'index')
   assert.equal(page.data.debugEnabled, true)
   assert.equal(page.data.debugOpen, false)
@@ -561,7 +645,7 @@ test('debug controls simulate all six strings and signed offsets without playing
 })
 
 test('deviations within two cents use a white outline and green-fill state, including exact boundaries', () => {
-  const { page, tick } = createPage(new Map(), false, 'zh_CN', 'index')
+  const { page, tick, audios } = createPage(new Map(), false, 'zh_CN', 'index')
   page.toggleDebugPanel()
   for (let index = 0; index < 6; index++) {
     page.debugSelectString({ detail: { value: String(index) } })
@@ -572,6 +656,7 @@ test('deviations within two cents use a white outline and green-fill state, incl
       assert.equal(page.data.debugMarkerColor, '#f2f5f3')
       assert.equal(page.data.debugHintKey, 'holdPitch')
       tick()
+      audios.at(-1)?.ended()
       assert.equal(page.data.pitchTrail.at(-1).color, '#16834b')
     }
     for (const value of [-2.01, 2.01]) {
