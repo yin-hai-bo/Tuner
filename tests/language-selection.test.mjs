@@ -15,7 +15,12 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   let title
   const tabs = []
   const audioLog = [], audios = [], toasts = []
+  let now = 0, timerId = 0
+  const timers = new Map()
   runInNewContext(source, {
+    Date: { now: () => now },
+    setInterval: callback => { timers.set(++timerId, callback); return timerId },
+    clearInterval: id => timers.delete(id),
     getMessages, getPreferredLanguage,
     getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection,
     Component: value => { definition = value },
@@ -56,8 +61,52 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   show()
   const hide = () => definition.pageLifetimes.hide.call(page)
   const detach = () => definition.lifetimes.detached.call(page)
-  return { page, show, hide, detach, getTitle: () => title, tabs, audioLog, audios, toasts }
+  const tick = () => { now += 100; for (const callback of timers.values()) callback() }
+  return { page, show, hide, detach, tick, timers, getTitle: () => title, tabs, audioLog, audios, toasts }
 }
+
+test('pitch trail samples marker position and color, preserves history and expires old points', () => {
+  const { page, tick } = createPage(new Map(), false, 'en', 'index')
+  tick()
+  assert.equal(page.data.pitchTrail.length, 0)
+  page.toggleDebugPanel()
+  page.debugChangeCents({ detail: { value: -50 } })
+  tick()
+  const first = page.data.pitchTrail[0]
+  assert.equal(first.offset, page.data.debugOffset)
+  assert.equal(first.color, page.data.debugMarkerColor)
+  page.debugChangeCents({ detail: { value: 0 } })
+  tick()
+  assert.equal(page.data.pitchTrail[0], first)
+  assert.equal(page.data.pitchTrail[1].color, '#16834b')
+  for (let i = 0; i < 210; i++) tick()
+  assert.equal(page.data.pitchTrail.length, 200)
+  assert.ok(!page.data.pitchTrail.includes(first))
+  for (const state of ['silent', 'uncertain']) {
+    page.debugSetState({ currentTarget: { dataset: { state } } })
+    for (let i = 0; i < 201; i++) tick()
+    assert.equal(page.data.pitchTrail.length, 0)
+  }
+})
+
+test('reference playback suppresses trail samples and page exit clears timers and history', () => {
+  const { page, tick, hide, show, detach, timers, audios } = createPage(new Map(), false, 'en', 'index')
+  page.toggleDebugPanel()
+  page.debugChangeCents({ detail: { value: 5 } })
+  tick()
+  page.selectTuner({ currentTarget: { dataset: { number: 6 } } })
+  audios[0].started()
+  tick()
+  assert.equal(page.data.pitchTrail.length, 1)
+  hide()
+  assert.equal(page.data.pitchTrail.length, 0)
+  assert.equal(timers.size, 0)
+  show()
+  show()
+  assert.equal(timers.size, 1)
+  detach()
+  assert.equal(timers.size, 0)
+})
 
 test('debug controls simulate all six strings and signed offsets without playing audio', () => {
   const { page, audios } = createPage(new Map(), false, 'zh_CN', 'index')
@@ -80,7 +129,8 @@ test('debug controls simulate all six strings and signed offsets without playing
 })
 
 test('deviations within two cents use a white outline and green-fill state, including exact boundaries', () => {
-  const { page } = createPage(new Map(), false, 'zh_CN', 'index')
+  const { page, tick } = createPage(new Map(), false, 'zh_CN', 'index')
+  page.toggleDebugPanel()
   for (let index = 0; index < 6; index++) {
     page.debugSelectString({ detail: { value: String(index) } })
     for (const value of [-2, -1, 0, 1, 2]) {
@@ -88,10 +138,14 @@ test('deviations within two cents use a white outline and green-fill state, incl
       assert.equal(page.data.debugInTune, true)
       assert.equal(page.data.debugMarkerColor, '#f2f5f3')
       assert.equal(page.data.debugHintKey, 'holdPitch')
+      tick()
+      assert.equal(page.data.pitchTrail.at(-1).color, '#16834b')
     }
     for (const value of [-2.01, 2.01]) {
       page.debugChangeCents({ detail: { value } })
       assert.equal(page.data.debugInTune, false)
+      tick()
+      assert.equal(page.data.pitchTrail.at(-1).color, page.data.debugMarkerColor)
     }
   }
 })

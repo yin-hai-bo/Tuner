@@ -1,5 +1,9 @@
 <view class="tuner">
-  <view class="pitch-grid" aria-hidden="true"></view>
+  <view class="pitch-grid {{debugOpen && debugInTune && !isReferencePlaying ? 'in-tune' : ''}}" aria-hidden="true">
+    <view class="pitch-trail">
+      <view wx:for="{{pitchTrail}}" wx:key="id" class="pitch-trail-dot" style="left: {{50 + item.offset}}%; background: {{item.color}};"></view>
+    </view>
+  </view>
   <view class="toolbar">
     <label class="auto-control">
       <text>{{messages.automatic}}</text>
@@ -23,7 +27,11 @@
   </view>
   <view class="pitch-feedback">
     <view wx:if="{{!isReferencePlaying}}" class="pitch-marker {{debugOpen && debugInTune ? 'in-tune' : ''}} {{!debugOpen || debugState === 'silent' ? 'waiting' : ''}}" style="left: {{debugOpen && debugReading ? 50 + debugOffset : 50}}%; color: {{debugOpen && debugReading ? debugMarkerColor : ''}};">
-      <text wx:if="{{debugOpen && debugReading}}" class="pitch-value">{{debugDeviation > 0 ? '+' : ''}}{{debugDeviation}}</text>
+      <view wx:if="{{debugOpen && debugReading && debugDeviation === 0}}" class="pitch-check" aria-label="{{messages.holdPitch}}">
+        <view class="check-short"></view>
+        <view class="check-long"></view>
+      </view>
+      <text wx:elif="{{debugOpen && debugReading}}" class="pitch-value">{{debugDeviation > 0 ? '+' : ''}}{{debugDeviation}}</text>
     </view>
     <text class="pitch-hint">{{debugOpen && debugState !== 'silent' && !isReferencePlaying ? messages[debugHintKey] : pluckHint}}</text>
   </view>

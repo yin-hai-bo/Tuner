@@ -3,6 +3,7 @@ import { getPitchReading, getStringFrequency, selectString, standardTuning, useA
 
 const languageStorageKey = 'preferredLanguage'
 let referenceAudio: WechatMiniprogram.InnerAudioContext | undefined
+let trailTimer: ReturnType<typeof setInterval> | undefined
 
 Component({
   data: {
@@ -28,14 +29,17 @@ Component({
     debugMarkerColor: '#f2f5f3',
     debugAutoTarget: 0,
     debugHintKey: 'pluckString',
+    pitchTrail: [] as { id: number; offset: number; color: string }[],
   },
   lifetimes: {
     detached() {
+      this.stopPitchTrail()
       this.stopReference()
     },
   },
   pageLifetimes: {
     hide() {
+      this.stopPitchTrail()
       this.stopReference()
       this.updateDebugReading('silent')
     },
@@ -49,6 +53,8 @@ Component({
       const system = wx.getSystemInfoSync()
       const messages = getMessages(getPreferredLanguage(savedLanguage, system.language))
       this.setData({ messages, debugEnabled: system.platform === 'devtools' })
+      this.stopPitchTrail()
+      trailTimer = setInterval(() => this.samplePitchTrail(), 100)
       this.updatePluckHint()
       wx.setNavigationBarTitle({ title: messages.title })
       wx.setTabBarItem({ index: 0, text: messages.tune })
@@ -56,6 +62,23 @@ Component({
     },
   },
   methods: {
+    stopPitchTrail() {
+      if (trailTimer !== undefined) clearInterval(trailTimer)
+      trailTimer = undefined
+      this.setData({ pitchTrail: [] })
+    },
+    samplePitchTrail() {
+      const now = Date.now()
+      const { pitchTrail, debugOpen, debugReading, isReferencePlaying, debugOffset, debugMarkerColor } = this.data
+      const points = pitchTrail.filter(point => point.id > now - 20000)
+      if (debugOpen && debugReading && !isReferencePlaying) {
+        points.push({ id: now, offset: debugOffset,
+          color: this.data.debugInTune ? '#16834b' : debugMarkerColor })
+      }
+      if (points.length !== pitchTrail.length || points[points.length - 1] !== pitchTrail[pitchTrail.length - 1]) {
+        this.setData({ pitchTrail: points })
+      }
+    },
     toggleDebugPanel() {
       if (!this.data.debugEnabled) return
       this.setData({ debugOpen: !this.data.debugOpen })
