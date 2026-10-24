@@ -99,6 +99,30 @@ function select(page, language) {
   page.selectLanguage({ detail: { value: language } })
 }
 
+test('pluck hint follows manual string selection and the auto switch', () => {
+  const { page } = createPage(new Map(), false, 'zh_CN', 'index')
+  assert.equal(page.data.pluckHint, '请拨动一根琴弦')
+  page.toggleAutomatic({ detail: { value: false } })
+  assert.equal(page.data.pluckHint, '请拨动第 6 弦 (E)')
+  for (const [number, note] of [[1, 'E'], [2, 'B'], [3, 'G'], [4, 'D'], [5, 'A'], [6, 'E']]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+    assert.equal(page.data.pluckHint, `请拨动第 ${number} 弦 (${note})`)
+  }
+  page.toggleAutomatic({ detail: { value: true } })
+  assert.equal(page.data.pluckHint, '请拨动一根琴弦')
+})
+
+test('pluck hint updates language while preserving the selected string', () => {
+  const storage = new Map()
+  const { page, show } = createPage(storage, false, 'zh_CN', 'index')
+  page.selectTuner({ currentTarget: { dataset: { number: 2 } } })
+  storage.set('preferredLanguage', 'en')
+  show()
+  assert.equal(page.data.pluckHint, 'Pluck string 2 (B)')
+  page.toggleAutomatic({ detail: { value: true } })
+  assert.equal(page.data.pluckHint, 'Pluck a single string')
+})
+
 test('selection updates text and navigation title and survives a new page', () => {
   const storage = new Map()
   const { page, getTitle } = createPage(storage)

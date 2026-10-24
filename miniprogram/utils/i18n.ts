@@ -9,7 +9,9 @@ const messages = {
     automatic: '自动',
     manual: '手动',
     string: '琴弦',
-    chooseString: '点击弦钮选择琴弦',
+    chooseString: '（点击弦钮选择琴弦将退出自动模式）',
+    pluckString: '请拨动一根琴弦',
+    pluckSelectedString: '请拨动第 {number} 弦 ({note})',
   },
   en: {
     title: 'Tuner',
@@ -21,7 +23,9 @@ const messages = {
     automatic: 'Auto',
     manual: 'Manual',
     string: 'String',
-    chooseString: 'Tap a tuning peg to select a string',
+    chooseString: '(Selecting a string with a tuning peg exits auto mode)',
+    pluckString: 'Pluck a single string',
+    pluckSelectedString: 'Pluck string {number} ({note})',
   },
 }
 

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 
-const chinese = { title: '校音器', tune: '校音', subtitle: '六弦吉他 · 标准调弦', settings: '设置', language: '语言', followSystem: '跟随系统', automatic: '自动', manual: '手动', string: '琴弦', chooseString: '点击弦钮选择琴弦' }
-const english = { title: 'Tuner', tune: 'Tune', subtitle: '6-string guitar · Standard tuning', settings: 'Settings', language: 'Language', followSystem: 'Follow system', automatic: 'Auto', manual: 'Manual', string: 'String', chooseString: 'Tap a tuning peg to select a string' }
+const chinese = { title: '校音器', tune: '校音', subtitle: '六弦吉他 · 标准调弦', settings: '设置', language: '语言', followSystem: '跟随系统', automatic: '自动', manual: '手动', string: '琴弦', chooseString: '（点击弦钮选择琴弦将退出自动模式）', pluckString: '请拨动一根琴弦', pluckSelectedString: '请拨动第 {number} 弦 ({note})' }
+const english = { title: 'Tuner', tune: 'Tune', subtitle: '6-string guitar · Standard tuning', settings: 'Settings', language: 'Language', followSystem: 'Follow system', automatic: 'Auto', manual: 'Manual', string: 'String', chooseString: '(Selecting a string with a tuning peg exits auto mode)', pluckString: 'Pluck a single string', pluckSelectedString: 'Pluck string {number} ({note})' }
 
 test('a saved selection overrides the system language', () => {
   assert.equal(getPreferredLanguage('en', 'zh_CN'), 'en')

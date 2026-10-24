@@ -7,6 +7,9 @@
     </label>
   </view>
   <view class="headstock">
+    <view class="pitch-feedback">
+      <text class="pitch-hint">{{pluckHint}}</text>
+    </view>
     <image class="headstock-image" src="/assets/guitar-headstock.svg" mode="aspectFit" aria-hidden="true"></image>
     <view class="tuners left">
       <view wx:for="{{leftTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
@@ -20,5 +23,5 @@
     </view>
   </view>
   <text class="target" wx:if="{{selection.target}}">{{messages.string}} {{selection.target.number}} · {{selection.target.note}}</text>
-  <text class="target" wx:else>{{messages.chooseString}}</text>
+  <text class="target selection-hint" wx:else>{{messages.chooseString}}</text>
 </view>
