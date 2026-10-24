@@ -1,17 +1,17 @@
 <view class="settings">
   <text class="heading">{{messages.language}}</text>
   <radio-group class="language-options" bindchange="selectLanguage" aria-label="{{messages.language}}">
-    <label class="option">
-      <radio value="system" checked="{{preference === 'system'}}" color="#00cba9" />
+    <label class="option {{preference === 'system' ? 'selected' : ''}}">
       <text>{{followSystem}}</text>
+      <radio value="system" checked="{{preference === 'system'}}" color="#00cba9" />
     </label>
-    <label class="option">
-      <radio value="zh-CN" checked="{{preference === 'zh-CN'}}" color="#00cba9" />
+    <label class="option {{preference === 'zh-CN' ? 'selected' : ''}}">
       <text>简体中文</text>
+      <radio value="zh-CN" checked="{{preference === 'zh-CN'}}" color="#00cba9" />
     </label>
-    <label class="option">
-      <radio value="en" checked="{{preference === 'en'}}" color="#00cba9" />
+    <label class="option {{preference === 'en' ? 'selected' : ''}}">
       <text>English</text>
+      <radio value="en" checked="{{preference === 'en'}}" color="#00cba9" />
     </label>
   </radio-group>
 </view>

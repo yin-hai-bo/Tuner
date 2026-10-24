@@ -5,20 +5,38 @@ page {
 }
 
 .settings { padding: 48rpx 32rpx; }
-.heading { font-size: 32rpx; }
+.heading {
+  margin-left: 8rpx;
+  color: #a7b2ac;
+  font-size: 28rpx;
+  font-weight: 500;
+}
 .language-options {
   display: flex;
-  justify-content: space-between;
-  gap: 8rpx;
+  flex-direction: column;
   margin-top: 24rpx;
-  padding: 24rpx 16rpx;
-  border-radius: 12rpx;
-  background: #202925;
+  overflow: hidden;
+  border: 1rpx solid #2a3831;
+  border-radius: 24rpx;
+  background: #19221e;
 }
 .option {
   display: flex;
   align-items: center;
-  gap: 8rpx;
-  white-space: nowrap;
-  font-size: 24rpx;
+  justify-content: space-between;
+  box-sizing: border-box;
+  min-height: 112rpx;
+  padding: 24rpx 28rpx;
+  gap: 24rpx;
+  border-bottom: 1rpx solid #2a3831;
+  font-size: 30rpx;
+  line-height: 44rpx;
+}
+.option:last-child { border-bottom: 0; }
+.option.selected { background: #1b342b; color: #00cba9; }
+.option radio {
+  flex-shrink: 0;
+  margin-right: 0;
+  transform: scale(.85);
+  transform-origin: right center;
 }
