@@ -222,6 +222,8 @@ test('home offers permission buttons for denial or API errors, and recording con
   assert.match(buttons[1][0], /microphonePermission === 'error'/)
   assert.doesNotMatch(template, /startTuning|microphoneReady/)
   assert.doesNotMatch(template, /pauseRecording|pauseListening|recordingState === 'idle'/)
+  const debugButton = template.match(/<button\b[^>]*class="debug-toggle"[^>]*>/)[0]
+  assert.match(debugButton, /wx:if="\{\{debugEnabled\}\}"/)
 })
 
 test('denial offers settings, and recording starts only when settings grant permission', () => {

@@ -94,6 +94,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12rpx;
   width: 100%;
   margin-bottom: 160rpx;
 }
@@ -131,6 +132,7 @@ page {
 .debug-actions button { margin: 0; padding: 0 12rpx; font-size: 22rpx; }
 
 .auto-control {
+  margin-right: auto;
   display: flex;
   align-items: center;
   width: fit-content;

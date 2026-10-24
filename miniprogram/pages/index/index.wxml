@@ -9,10 +9,10 @@
       <text>{{messages.automatic}}</text>
       <switch checked="{{selection.mode === 'auto'}}" color="#00cba9" bindchange="toggleAutomatic" aria-label="{{messages.automatic}}" />
     </label>
+    <button wx:if="{{debugEnabled}}" class="debug-toggle" bindtap="toggleDebugPanel">{{messages.debugTitle}}</button>
     <button wx:if="{{microphonePermission === 'denied'}}" class="microphone-button" disabled="{{permissionBusy}}" bindtap="openMicrophoneSettings">{{messages.openMicrophoneSettings}}</button>
     <button wx:elif="{{microphonePermission === 'error'}}" class="microphone-button" loading="{{permissionBusy}}" disabled="{{permissionBusy}}" bindtap="requestMicrophonePermission">{{messages.retryMicrophonePermission}}</button>
     <button wx:elif="{{microphonePermission === 'granted' && (recordingState === 'ended' || recordingState === 'interrupted')}}" class="microphone-button" bindtap="startRecording">{{messages.continueListening}}</button>
-    <button wx:if="{{debugEnabled}}" class="debug-toggle" bindtap="toggleDebugPanel">{{messages.debugTitle}}</button>
   </view>
   <text class="microphone-notice">{{microphonePermission === 'denied' ? messages.microphoneRequired : microphonePermission === 'error' ? messages.microphonePermissionError : recordingState === 'error' ? messages.recordingError : messages.microphonePrivacy}}</text>
   <view wx:if="{{debugEnabled && debugOpen}}" class="debug-panel">
