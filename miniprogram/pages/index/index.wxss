@@ -107,6 +107,26 @@ page {
   pointer-events: none;
 }
 
+.string-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  animation: string-decay 3s linear forwards;
+}
+
+/* Approximate the reference tone's fast attack and quieter sustained tail. */
+@keyframes string-decay {
+  0% { opacity: 1; }
+  10% { opacity: .55; }
+  30% { opacity: .28; }
+  60% { opacity: .13; }
+  90% { opacity: .06; }
+  100% { opacity: 0; }
+}
+
 .pitch-hint {
   margin-top: 16rpx;
   color: #a7b2ac;

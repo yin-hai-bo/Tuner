@@ -8,6 +8,9 @@ Component({
   data: {
     messages: getMessages('en'),
     pluckHint: getMessages('en').pluckString,
+    isReferencePlaying: false,
+    referencePlaybackId: 0,
+    highlightedStrings: [] as { id: number; number: number }[],
     selection: useAutomaticSelection(),
     leftTuners: standardTuning.slice(0, 3).reverse(),
     rightTuners: standardTuning.slice(3),
@@ -44,11 +47,25 @@ Component({
         audio.stop()
         audio.destroy()
       }
+      if (this.data.isReferencePlaying) {
+        this.setData({ isReferencePlaying: false, highlightedStrings: [] })
+        this.updatePluckHint()
+      }
     },
     playReference(number: number) {
       this.stopReference()
       const audio = wx.createInnerAudioContext()
       referenceAudio = audio
+      audio.onPlay(() => {
+        if (referenceAudio !== audio) return
+        const id = this.data.referencePlaybackId + 1
+        this.setData({
+          isReferencePlaying: true,
+          referencePlaybackId: id,
+          highlightedStrings: [{ id, number }],
+        })
+        this.updatePluckHint()
+      })
       audio.onEnded(() => {
         if (referenceAudio === audio) this.stopReference()
       })
@@ -61,9 +78,10 @@ Component({
       audio.play()
     },
     updatePluckHint() {
-      const { selection, messages } = this.data
+      const { selection, messages, isReferencePlaying } = this.data
+      const manualHint = isReferencePlaying ? messages.calibratingString : messages.pluckSelectedString
       const pluckHint = selection.mode === 'manual'
-        ? messages.pluckSelectedString
+        ? manualHint
           .replace('{number}', String(selection.target.number))
           .replace('{note}', selection.target.note)
         : messages.pluckString

@@ -25,7 +25,7 @@ for (const [number, expected] of [[6, 82.4069], [5, 110], [4, 146.8324], [3, 195
       const segment = samples.slice(Math.floor(start * rate), Math.floor(end * rate))
       return Math.sqrt(segment.reduce((sum, value) => sum + value ** 2, 0) / segment.length)
     }
-    const attack = rms(.03, .15), middle = rms(.5, .65), tail = rms(2.3, 2.5)
+    const attack = rms(.03, .15), middle = rms(.5, .65), tail = rms(2.6, 2.8)
     assert.ok(middle < attack * .5, 'The initial sound should decay quickly')
     assert.ok(tail > attack * .003, 'The tail should retain a quiet audible signal')
     assert.ok(tail < middle * .25, 'The tail should continue to fade')

@@ -17,8 +17,8 @@ for (const [number, midi] of strings) {
     // A pluck excites harmonics; higher harmonics fade faster than the fundamental.
     for (let harmonic = 1; harmonic <= 24; harmonic++) {
       const amplitude = Math.sin(Math.PI * harmonic * .23) / harmonic ** 1.3
-      const decay = .72 * Math.exp(-time * (5 + harmonic * .8))
-        + .28 * Math.exp(-time * (1.3 + harmonic * .15))
+      const decay = .72 * Math.exp(-time * (3.3 + harmonic * .5))
+        + .28 * Math.exp(-time * (.75 + harmonic * .09))
       value += amplitude * decay
         * Math.sin(2 * Math.PI * frequency * harmonic * time)
     }

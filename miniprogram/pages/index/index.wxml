@@ -11,6 +11,9 @@
       <text class="pitch-hint">{{pluckHint}}</text>
     </view>
     <image class="headstock-image" src="/assets/guitar-headstock.svg" mode="aspectFit" aria-hidden="true"></image>
+    <view wx:for="{{highlightedStrings}}" wx:key="id" class="string-highlight" aria-hidden="true">
+      <image class="headstock-image" src="/assets/string-highlights/string-{{item.number}}.svg" mode="aspectFit"></image>
+    </view>
     <view class="tuners left">
       <view wx:for="{{leftTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
         <text wx:if="{{selection.target && selection.target.number === item.number}}">{{item.number}} · {{item.note}}</text>

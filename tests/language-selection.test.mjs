@@ -27,6 +27,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
           stop() { audioLog.push('stop') },
           destroy() { audioLog.push('destroy') },
           onEnded(callback) { this.ended = callback },
+          onPlay(callback) { this.started = callback },
           onError(callback) { this.error = callback },
         }
         audios.push(audio)
@@ -82,10 +83,15 @@ for (const action of ['hide', 'detach', 'ended', 'auto']) {
     const state = createPage(new Map(), false, 'en', 'index')
     state.page.toggleAutomatic({ detail: { value: false } })
     assert.equal(state.audios[0].src, '/assets/tones/string-6.wav')
+    state.audios[0].started()
+    assert.equal(state.page.data.pluckHint, 'Calibrating string 6 (E)')
     if (action === 'auto') state.page.toggleAutomatic({ detail: { value: true } })
     else if (action === 'ended') state.audios[0].ended()
     else state[action]()
     assert.deepEqual(state.audioLog, ['play:/assets/tones/string-6.wav', 'stop', 'destroy'])
+    assert.equal(state.page.data.isReferencePlaying, false)
+    assert.equal(state.page.data.highlightedStrings.length, 0)
+    assert.equal(state.page.data.pluckHint, action === 'auto' ? 'Pluck a single string' : 'Pluck string 6 (E)')
     state.hide()
     assert.equal(state.audioLog.length, 3)
   })
@@ -94,12 +100,56 @@ for (const action of ['hide', 'detach', 'ended', 'auto']) {
 test('audio errors preserve selection, release the player and allow retry', () => {
   const { page, audios, toasts, audioLog } = createPage(new Map(), false, 'zh_CN', 'index')
   page.selectTuner({ currentTarget: { dataset: { number: 4 } } })
+  audios[0].started()
   audios[0].error()
   assert.equal(page.data.selection.target.number, 4)
+  assert.equal(page.data.pluckHint, '请拨动第 4 弦 (D)')
+  assert.equal(page.data.highlightedStrings.length, 0)
   assert.deepEqual(toasts, ['参考音播放失败，请重试'])
   assert.deepEqual(audioLog.slice(-2), ['stop', 'destroy'])
   page.selectTuner({ currentTarget: { dataset: { number: 4 } } })
   assert.equal(audios.length, 2)
+})
+
+test('string highlighting starts with playback and restarts for repeated taps', () => {
+  const { page, audios } = createPage(new Map(), false, 'zh_CN', 'index')
+  let previousId = 0
+  for (const number of [6, 6, 5, 4, 3, 2, 1]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+    assert.equal(page.data.highlightedStrings.length, 0)
+    audios.at(-1).started()
+    assert.equal(page.data.highlightedStrings.length, 1)
+    const highlight = page.data.highlightedStrings[0]
+    assert.equal(highlight.number, number)
+    assert.ok(highlight.id > previousId, 'A new key restarts the fade on every playback')
+    previousId = highlight.id
+    if (audios.length > 1) {
+      audios.at(-2).started()
+      audios.at(-2).ended()
+      assert.strictEqual(page.data.highlightedStrings[0], highlight)
+    }
+  }
+})
+
+test('reference playback shows the selected string and note, including after language changes', () => {
+  const storage = new Map()
+  const { page, audios, show } = createPage(storage, false, 'zh_CN', 'index')
+  for (const [number, note] of [[6, 'E'], [5, 'A'], [4, 'D'], [3, 'G'], [2, 'B'], [1, 'E']]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+    const audio = audios.at(-1)
+    audio.started()
+    assert.equal(page.data.pluckHint, `正在对第 ${number} 弦 (${note}) 进行校准`)
+    if (audios.length > 1) {
+      audios.at(-2).started()
+      audios.at(-2).ended()
+      assert.equal(page.data.pluckHint, `正在对第 ${number} 弦 (${note}) 进行校准`)
+    }
+  }
+  storage.set('preferredLanguage', 'en')
+  show()
+  assert.equal(page.data.pluckHint, 'Calibrating string 1 (E)')
+  audios.at(-1).ended()
+  assert.equal(page.data.pluckHint, 'Pluck string 1 (E)')
 })
 
 test('home connects all six tuning pegs and clears the target in auto mode', () => {
