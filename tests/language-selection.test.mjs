@@ -139,6 +139,82 @@ function pcmTone(frequency) {
   return frame
 }
 
+test('silent PCM preserves the last result for 999ms and clears at 1000ms without extending it', () => {
+  const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
+  page.toggleAutomatic({ detail: { value: false } })
+  recordingEvents.Start()
+  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(getStringFrequency(6) * 2 ** (20 / 1200)) })
+  const reading = page.data.debugReading
+  const offset = page.data.debugOffset
+  tick(100)
+  recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
+  const trailLength = page.data.pitchTrail.length
+  tick(899)
+  recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
+  assert.equal(page.data.debugReading, reading)
+  assert.equal(page.data.debugOffset, offset)
+  assert.equal(page.data.debugHintKey, 'pitchHigh')
+  assert.equal(page.data.pitchTrail.length, trailLength, 'Held readings must not fabricate new measurements')
+  tick(1)
+  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.debugOffset, 0)
+  assert.equal(page.data.debugMarkerColor, '#f2f5f3')
+  assert.equal(page.data.selection.target.number, 6)
+})
+
+test('a confirmed automatic target and tuned check survive brief silence on the same string', () => {
+  const { page, tick } = createPage(new Map(), false, 'en', 'index')
+  const tone = () => page.updateLiveReading(110, 'tone')
+  tone()
+  tick(300)
+  tone()
+  tick(500)
+  tone()
+  assert.equal(page.data.pitchStable, true)
+  page.updateLiveReading(null, 'silent')
+  tick(100)
+  assert.equal(page.data.debugAutoTarget, 5)
+  assert.equal(page.data.pitchStable, true)
+  tone()
+  assert.equal(page.data.pitchStable, true)
+  assert.equal(page.data.debugHintKey, 'inTune')
+})
+
+test('brief silence does not count toward unfinished stable tuning', () => {
+  const { page, tick } = createPage(new Map(), false, 'en', 'index')
+  page.toggleAutomatic({ detail: { value: false } })
+  const tone = () => page.updateLiveReading(getStringFrequency(6), 'tone')
+  tone()
+  tick(400)
+  page.updateLiveReading(null, 'silent')
+  tick(100)
+  tone()
+  assert.equal(page.data.pitchStable, false)
+  tick(499)
+  tone()
+  assert.equal(page.data.pitchStable, false)
+  tick(1)
+  tone()
+  assert.equal(page.data.pitchStable, true)
+})
+
+for (const action of ['selection', 'uncertain', 'interrupted', 'hide']) {
+  test(`${action} immediately discards a held reading`, () => {
+    const { page, recordingEvents, hide } = createPage(new Map(), false, 'en', 'index')
+    page.toggleAutomatic({ detail: { value: false } })
+    recordingEvents.Start()
+    page.updateLiveReading(getStringFrequency(6), 'tone')
+    page.updateLiveReading(null, 'silent')
+    assert.notEqual(page.data.debugReading, null)
+    if (action === 'selection') page.selectTuner({ currentTarget: { dataset: { number: 5 } } })
+    if (action === 'uncertain') page.updateLiveReading(null, 'uncertain')
+    if (action === 'interrupted') recordingEvents.InterruptionBegin()
+    if (action === 'hide') hide()
+    assert.equal(page.data.debugReading, null)
+    assert.equal(page.data.pitchStable, false)
+  })
+}
+
 test('live PCM shows the tuned check only after 500ms and resets on mode changes', () => {
   const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
   page.toggleAutomatic({ detail: { value: false } })
@@ -208,7 +284,7 @@ test('manual live input locks the selected string and clears on interruption', (
   assert.equal(page.data.debugHintKey, 'pitchHigh')
   assert.equal(page.data.debugAutoTarget, 0)
   recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
-  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.debugReading.target.number, 6, 'Brief silence preserves the last reading')
   assert.equal(page.data.debugState, 'silent')
   page.updateLiveReading(null, 'uncertain')
   assert.equal(page.data.debugMarkerColor, '#7b8580')
@@ -435,12 +511,11 @@ test('automatic feedback waits 300ms and restarts when candidates change', () =>
   assert.equal(page.data.debugAutoTarget, 5, 'Switching does not require the previous string to be in tune')
 })
 
-test('interruptions and manual mode discard automatic confirmation history', () => {
+test('unreliable input, page changes and manual mode discard automatic confirmation history', () => {
   const { page, tick, hide, show, detach, timers } = createPage(new Map(), false, 'en', 'index')
   page.toggleDebugPanel()
   const tone = () => page.debugSetState({ currentTarget: { dataset: { state: 'tone' } } })
   for (const interrupt of [
-    () => page.debugSetState({ currentTarget: { dataset: { state: 'silent' } } }),
     () => page.debugSetState({ currentTarget: { dataset: { state: 'uncertain' } } }),
     () => { page.toggleDebugPanel(); page.toggleDebugPanel() },
     () => { hide(); show() },
@@ -527,12 +602,13 @@ test('marker position and redness increase symmetrically with the deviation magn
     assert.ok(Math.abs(page.data.debugOffset + previousOffset) < .001)
   }
   page.debugSetState({ currentTarget: { dataset: { state: 'silent' } } })
+  tick(1000)
   assert.equal(page.data.debugInTune, false)
   assert.equal(page.data.debugMarkerColor, '#f2f5f3')
   assert.equal(page.data.debugOffset, 0)
 })
 
-test('debug input respects manual selection and clears on silence, unreliable input, close and hide', () => {
+test('debug input respects manual selection and clears after silence, unreliable input, close and hide', () => {
   const { page, hide, tick } = createPage(new Map(), false, 'en', 'index')
   page.toggleDebugPanel()
   page.debugSelectString({ detail: { value: '1' } }) // Sounding string 5 A.
@@ -546,6 +622,7 @@ test('debug input respects manual selection and clears on silence, unreliable in
   assert.equal(page.data.debugReading.target.number, 5)
   for (const state of ['silent', 'uncertain']) {
     page.debugSetState({ currentTarget: { dataset: { state } } })
+    if (state === 'silent') tick(1000)
     assert.equal(page.data.debugState, state)
     assert.equal(page.data.debugReading, null)
     assert.equal(page.data.debugFrequency, '')

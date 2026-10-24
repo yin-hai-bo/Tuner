@@ -33,14 +33,14 @@
     <view wx:else>{{debugState === 'uncertain' ? messages.debugUncertain : messages.debugSilent}}</view>
   </view>
   <view class="pitch-feedback">
-    <view class="pitch-marker {{debugInTune ? 'in-tune' : ''}} {{debugState === 'silent' || (debugState === 'tone' && !debugReading) ? 'waiting' : ''}}" style="left: {{debugReading ? 50 + debugOffset : 50}}%; color: {{debugMarkerColor}};">
+    <view class="pitch-marker {{debugInTune ? 'in-tune' : ''}} {{!debugReading && debugState !== 'uncertain' ? 'waiting' : ''}}" style="left: {{debugReading ? 50 + debugOffset : 50}}%; color: {{debugMarkerColor}};">
       <view wx:if="{{pitchStable}}" class="pitch-check" aria-label="{{messages.inTune}}">
         <view class="check-short"></view>
         <view class="check-long"></view>
       </view>
       <text wx:elif="{{debugReading}}" class="pitch-value">{{debugDeviation > 0 ? '+' : ''}}{{debugDeviation}}</text>
     </view>
-    <text class="pitch-hint">{{debugState !== 'silent' ? messages[debugHintKey] : pluckHint}}</text>
+    <text class="pitch-hint">{{debugReading || debugState === 'uncertain' ? messages[debugHintKey] : pluckHint}}</text>
   </view>
   <view class="headstock">
     <image class="headstock-image" src="/assets/guitar-headstock.svg" mode="aspectFit" aria-hidden="true"></image>

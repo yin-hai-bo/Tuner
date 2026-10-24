@@ -14,12 +14,14 @@ type RecordingPage = {
   setData: (data: Record<string, unknown>) => void
   startRecording: () => void
   updateLiveReading: (frequency: number | null, state: PitchInputState) => void
+  clearPitchReading: () => void
 }
 let recordingPage: RecordingPage | undefined
 let pcmRecorder: ReturnType<typeof createPcmRecorder> | undefined
 let recordingState: RecordingState = 'idle'
 let permissionEpoch = 0
 let lastLiveInputAt: number | null = null
+let lastReadingAt: number | null = null
 const pcmPitch = createPcmPitchReader((frequency, state) => recordingPage?.updateLiveReading(frequency, state))
 
 Component({
@@ -102,7 +104,7 @@ Component({
             if (state !== 'recording') {
               pcmPitch.reset()
               recordingPage?.setData({ liveFrequency: '' })
-              recordingPage?.updateLiveReading(null, 'silent')
+              recordingPage?.clearPitchReading()
             }
             recordingPage?.setData({ recordingState: state })
             if (['interrupted', 'ended', 'error'].includes(state)) recordingPage?.setData({ recordingRequested: false })
@@ -125,7 +127,7 @@ Component({
       permissionEpoch++
       recordingPage = undefined
       pcmPitch.reset()
-      this.applyPitchReading(null, 'silent')
+      this.clearPitchReading()
       this.setData({ permissionBusy: false, recordingRequested: false, pcmBytes: 0, liveFrequency: '' })
       pcmRecorder?.stop()
     },
@@ -177,6 +179,7 @@ Component({
       })
     },
     stopPitchTrail() {
+      lastReadingAt = null
       confirmAutomaticString(null, Date.now())
       confirmStableTuning(null, 0, Date.now())
       if (trailTimer !== undefined) clearInterval(trailTimer)
@@ -190,9 +193,10 @@ Component({
         this.applyPitchReading(null, 'silent')
         lastLiveInputAt = null
       }
-      const { pitchTrail, debugReading, debugOffset, debugMarkerColor } = this.data
+      if (this.data.debugState === 'silent' && lastReadingAt !== null && now - lastReadingAt >= 1000) this.clearPitchReading()
+      const { pitchTrail, debugReading, debugState, debugOffset, debugMarkerColor } = this.data
       const points = pitchTrail.filter(point => point.id > now - 20000)
-      if (debugReading) {
+      if (debugReading && debugState !== 'silent') {
         points.push({ id: now, offset: debugOffset,
           color: this.data.debugInTune ? '#16834b' : debugMarkerColor })
       }
@@ -203,6 +207,10 @@ Component({
     toggleDebugPanel() {
       if (!this.data.debugEnabled) return
       this.setData({ debugOpen: !this.data.debugOpen })
+      this.clearPitchReading()
+    },
+    clearPitchReading() {
+      lastReadingAt = null
       this.applyPitchReading(null, 'silent')
     },
     updateLiveReading(frequency: number | null, state: PitchInputState) {
@@ -218,6 +226,13 @@ Component({
       this.applyPitchReading(state === 'tone' ? frequency : null, state)
     },
     applyPitchReading(frequency: number | null, state: PitchInputState) {
+      const now = Date.now()
+      const holding = lastReadingAt !== null && now - lastReadingAt < 1000 && now >= lastReadingAt
+      if (state === 'silent' && holding && this.data.debugReading) {
+        confirmStableTuning(null, 0, now)
+        this.setData({ debugState: state, debugFrequency: '' })
+        return
+      }
       const { selection } = this.data
       const candidate = state === 'tone' && frequency !== null
         ? getPitchReading(frequency, selection.mode === 'manual' ? selection.target.number : undefined)
@@ -229,7 +244,10 @@ Component({
       const distance = reading ? Math.abs(reading.cents) : 0
       // Allow only negligible floating-point error at the exact 2-cent boundary.
       const debugInTune = reading !== null && distance <= 2 + 1e-7
-      const pitchStable = confirmStableTuning(reading ? reading.target.number : null, reading ? reading.cents : 0, Date.now())
+      const stable = confirmStableTuning(reading ? reading.target.number : null, reading ? reading.cents : 0, now)
+      const pitchStable = stable || (holding && this.data.pitchStable && debugInTune &&
+        this.data.debugReading?.target.number === reading?.target.number)
+      lastReadingAt = reading ? now : null
       const redness = Math.max(0, Math.min(1, (distance - 2) / 98))
       const debugMarkerColor = !reading && state === 'uncertain' ? '#7b8580' : !reading || debugInTune ? '#f2f5f3'
         : `rgb(244, ${Math.round(200 - 130 * redness)}, ${Math.round(78 - 8 * redness)})`
@@ -272,20 +290,22 @@ Component({
       const selection = selectString(this.data.selection, number)
       if (selection === this.data.selection) return
       this.setData({ selection })
+      lastReadingAt = null
       confirmStableTuning(null, 0, Date.now())
       this.updatePluckHint()
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
-      else this.applyPitchReading(null, 'silent')
+      else this.clearPitchReading()
     },
     toggleAutomatic(event: WechatMiniprogram.SwitchChange) {
       const selection = event.detail.value
         ? useAutomaticSelection()
         : selectString(this.data.selection, 6)
       this.setData({ selection })
+      lastReadingAt = null
       confirmStableTuning(null, 0, Date.now())
       this.updatePluckHint()
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
-      else this.applyPitchReading(null, 'silent')
+      else this.clearPitchReading()
     },
   },
 })
