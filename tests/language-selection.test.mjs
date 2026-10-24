@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 import { createAutomaticStringConfirmation } from '../miniprogram/utils/automatic-string-confirmation.ts'
 import { createPcmRecorder } from '../miniprogram/utils/pcm-recorder.ts'
+import { detectPitch } from '../miniprogram/utils/pitch-detection.ts'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
 
 function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools', wxOverrides = {}) {
@@ -25,6 +26,9 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   }
   let now = 0, timerId = 0
   const timers = new Map()
+  const pcmSource = stripTypeScriptTypes(readFileSync(new URL('../miniprogram/utils/pcm-pitch.ts', import.meta.url), 'utf8')
+    .replace(/^import .*\r?\n/gm, '').replace('export function', 'function'))
+  const createPcmPitchReader = runInNewContext(`${pcmSource}\ncreatePcmPitchReader`, { detectPitch })
   runInNewContext(source, {
     Date: { now: () => now },
     setInterval: callback => { timers.set(++timerId, callback); return timerId },
@@ -32,6 +36,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
     getMessages, getPreferredLanguage,
     createAutomaticStringConfirmation,
     createPcmRecorder,
+    createPcmPitchReader,
     getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection,
     Component: value => { definition = value },
     wx: {
@@ -106,6 +111,23 @@ test('home receives frames, stops on hide and waits for file cleanup before rest
   assert.equal(session.recordingStarts.length, 2)
   session.detach()
   assert.equal(session.recordingStops, 2)
+})
+
+test('live PCM produces a debug frequency without changing simulated feedback and clears on exit', () => {
+  const { page, recordingEvents, hide } = createPage(new Map(), false, 'en', 'index')
+  const pcm = new ArrayBuffer(8192)
+  const view = new DataView(pcm)
+  for (let i = 0; i < 4096; i++) view.setInt16(i * 2, Math.round(20000 * Math.sin(2 * Math.PI * 110 * i / 16000)), true)
+  recordingEvents.Start()
+  recordingEvents.FrameRecorded({ frameBuffer: pcm.slice(0, 4097) })
+  assert.equal(page.data.liveFrequency, '')
+  recordingEvents.FrameRecorded({ frameBuffer: pcm.slice(4097) })
+  assert.ok(Math.abs(Number(page.data.liveFrequency) - 110) < .1)
+  assert.equal(page.data.debugReading, null)
+  hide()
+  assert.equal(page.data.liveFrequency, '')
+  recordingEvents.FrameRecorded({ frameBuffer: pcm })
+  assert.equal(page.data.liveFrequency, '')
 })
 
 test('recording limit and interruption require an explicit continue action', async () => {

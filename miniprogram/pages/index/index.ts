@@ -1,6 +1,7 @@
 import { getMessages, getPreferredLanguage } from '../../utils/i18n'
 import { createAutomaticStringConfirmation } from '../../utils/automatic-string-confirmation'
 import { createPcmRecorder, RecordingState } from '../../utils/pcm-recorder'
+import { createPcmPitchReader } from '../../utils/pcm-pitch'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../../utils/tuning-selection'
 
 const languageStorageKey = 'preferredLanguage'
@@ -15,6 +16,9 @@ let recordingPage: RecordingPage | undefined
 let pcmRecorder: ReturnType<typeof createPcmRecorder> | undefined
 let recordingState: RecordingState = 'idle'
 let permissionEpoch = 0
+const pcmPitch = createPcmPitchReader(frequency => recordingPage?.setData({
+  liveFrequency: frequency === null ? '' : frequency.toFixed(2),
+}))
 
 Component({
   data: {
@@ -25,6 +29,7 @@ Component({
     recordingState: 'idle' as RecordingState,
     recordingRequested: false,
     pcmBytes: 0,
+    liveFrequency: '',
     selection: useAutomaticSelection(),
     leftTuners: standardTuning.slice(0, 3).reverse(),
     rightTuners: standardTuning.slice(3),
@@ -85,9 +90,16 @@ Component({
       if (!pcmRecorder) {
         const isDevtools = this.data.debugEnabled
         pcmRecorder = createPcmRecorder(wx.getRecorderManager(),
-          frame => recordingPage?.setData({ pcmBytes: frame.byteLength }),
+          frame => {
+            recordingPage?.setData({ pcmBytes: frame.byteLength })
+            pcmPitch.push(frame)
+          },
           state => {
             recordingState = state
+            if (state !== 'recording') {
+              pcmPitch.reset()
+              recordingPage?.setData({ liveFrequency: '' })
+            }
             recordingPage?.setData({ recordingState: state })
             if (['interrupted', 'ended', 'error'].includes(state)) recordingPage?.setData({ recordingRequested: false })
             if (state === 'idle' && recordingPage?.data.recordingRequested) recordingPage.startRecording()
@@ -108,7 +120,8 @@ Component({
       if (recordingPage !== this) return
       permissionEpoch++
       recordingPage = undefined
-      this.setData({ permissionBusy: false, recordingRequested: false, pcmBytes: 0 })
+      pcmPitch.reset()
+      this.setData({ permissionBusy: false, recordingRequested: false, pcmBytes: 0, liveFrequency: '' })
       pcmRecorder?.stop()
     },
     setMicrophonePermission(microphonePermission: 'granted' | 'denied' | 'error') {

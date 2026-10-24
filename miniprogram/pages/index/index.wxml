@@ -17,6 +17,7 @@
   <text class="microphone-notice">{{microphonePermission === 'denied' ? messages.microphoneRequired : microphonePermission === 'error' ? messages.microphonePermissionError : recordingState === 'error' ? messages.recordingError : messages.microphonePrivacy}}</text>
   <view wx:if="{{debugEnabled && debugOpen}}" class="debug-panel">
     <view>PCM {{pcmBytes}} B · {{recordingState}}</view>
+    <view>PCM {{messages.debugFrequency}}: {{liveFrequency || '—'}} Hz</view>
     <picker range="{{debugStrings}}" value="{{debugIndex}}" bindchange="debugSelectString">
       <view>{{messages.string}} {{debugStrings[debugIndex]}} ▾</view>
     </picker>
