@@ -331,6 +331,41 @@ test('missing live frames reset confirmation, and simulation cannot confirm stal
   assert.equal(page.data.debugReading, null)
 })
 
+for (const language of ['zh_CN', 'en']) {
+  for (const reason of ['ended', 'interrupted']) {
+    test(`${language} shows ${reason} feedback and clears it only when continuing`, async () => {
+      const { page, recordingEvents, recordingStarts } = createPage(new Map(), false, language, 'index')
+      page.selectTuner({ currentTarget: { dataset: { number: 5 } } })
+      recordingEvents.Start()
+      page.updateLiveReading(110, 'tone')
+      if (reason === 'interrupted') recordingEvents.InterruptionBegin()
+      await recordingEvents.Stop({ tempFilePath: 'wxfile://stopped.pcm' })
+      recordingEvents.InterruptionEnd()
+      assert.equal(page.data.listeningStopped, true)
+      assert.equal(page.data.recordingHintKey, reason === 'ended' ? 'recordingEnded' : 'recordingInterrupted')
+      assert.match(page.data.messages[page.data.recordingHintKey], language === 'zh_CN' ? /点击继续/ : /Tap Continue/)
+      assert.equal(page.data.debugReading, null)
+      assert.equal(page.data.pitchStable, false)
+      assert.equal(page.data.selection.target.number, 5)
+      assert.equal(recordingStarts.length, 1)
+      page.startRecording()
+      recordingEvents.Start()
+      assert.equal(page.data.listeningStopped, false)
+      assert.equal(page.data.recordingHintKey, 'microphonePrivacy')
+      assert.equal(page.data.selection.target.number, 5)
+      assert.equal(page.data.debugReading, null)
+      assert.equal(recordingStarts.length, 2)
+    })
+  }
+}
+
+test('stopped listening uses its status text and a grey marker without asking for a pluck', () => {
+  const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
+  assert.match(template, /messages\[recordingHintKey\]/)
+  assert.match(template, /color: \{\{listeningStopped \? '#7b8580' : debugMarkerColor\}\}/)
+  assert.match(template, /listeningStopped \? '' : pluckHint/)
+})
+
 test('recording limit and interruption require an explicit continue action', async () => {
   const { page, recordingEvents, recordingStarts } = createPage(new Map(), false, 'en', 'index')
   recordingEvents.Start()

@@ -12,6 +12,13 @@ const confirmAutomaticString = createAutomaticStringConfirmation()
 const confirmStableTuning = createStableTuningConfirmation()
 const confirmSuccess = createSuccessConfirmation()
 let successPlaying = false
+function recordingFeedback(state: RecordingState) {
+  return {
+    recordingState: state,
+    listeningStopped: state === 'interrupted' || state === 'ended',
+    recordingHintKey: state === 'interrupted' ? 'recordingInterrupted' : state === 'ended' ? 'recordingEnded' : 'microphonePrivacy',
+  }
+}
 type RecordingPage = {
   data: { microphonePermission: string; recordingRequested: boolean }
   setData: (data: Record<string, unknown>) => void
@@ -39,7 +46,7 @@ Component({
     pluckHint: getMessages('en').pluckString,
     microphonePermission: 'unknown' as 'unknown' | 'granted' | 'denied' | 'error',
     permissionBusy: false,
-    recordingState: 'idle' as RecordingState,
+    ...recordingFeedback('idle'),
     recordingRequested: false,
     pcmBytes: 0,
     liveFrequency: '',
@@ -79,7 +86,7 @@ Component({
     show() {
       permissionEpoch++
       recordingPage = this
-      this.setData({ permissionBusy: false, recordingState })
+      this.setData({ permissionBusy: false, ...recordingFeedback(recordingState) })
       let savedLanguage: unknown
       try {
         savedLanguage = wx.getStorageSync(languageStorageKey)
@@ -117,7 +124,7 @@ Component({
               recordingPage?.setData({ liveFrequency: '' })
               recordingPage?.clearPitchReading()
             }
-            recordingPage?.setData({ recordingState: state })
+            recordingPage?.setData(recordingFeedback(state))
             if (['interrupted', 'ended', 'error'].includes(state)) recordingPage?.setData({ recordingRequested: false })
             if (state === 'idle' && recordingPage?.data.recordingRequested) recordingPage.startRecording()
           },

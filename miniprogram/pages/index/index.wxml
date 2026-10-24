@@ -14,7 +14,7 @@
     <button wx:elif="{{microphonePermission === 'error'}}" class="microphone-button" loading="{{permissionBusy}}" disabled="{{permissionBusy}}" bindtap="requestMicrophonePermission">{{messages.retryMicrophonePermission}}</button>
     <button wx:elif="{{microphonePermission === 'granted' && (recordingState === 'ended' || recordingState === 'interrupted')}}" class="microphone-button" bindtap="startRecording">{{messages.continueListening}}</button>
   </view>
-  <text class="microphone-notice">{{microphonePermission === 'denied' ? messages.microphoneRequired : microphonePermission === 'error' ? messages.microphonePermissionError : recordingState === 'error' ? messages.recordingError : messages.microphonePrivacy}}</text>
+  <text class="microphone-notice">{{microphonePermission === 'denied' ? messages.microphoneRequired : microphonePermission === 'error' ? messages.microphonePermissionError : recordingState === 'error' ? messages.recordingError : messages[recordingHintKey]}}</text>
   <view wx:if="{{debugEnabled && debugOpen}}" class="debug-panel">
     <view>PCM {{pcmBytes}} B · {{recordingState}}</view>
     <view>PCM {{messages.debugFrequency}}: {{liveFrequency || '—'}} Hz</view>
@@ -33,14 +33,14 @@
     <view wx:else>{{debugState === 'uncertain' ? messages.debugUncertain : messages.debugSilent}}</view>
   </view>
   <view class="pitch-feedback">
-    <view class="pitch-marker {{debugInTune ? 'in-tune' : ''}} {{!debugReading && debugState !== 'uncertain' ? 'waiting' : ''}}" style="left: {{debugReading ? 50 + debugOffset : 50}}%; color: {{debugMarkerColor}};">
+    <view class="pitch-marker {{debugInTune ? 'in-tune' : ''}} {{!debugReading && debugState !== 'uncertain' ? 'waiting' : ''}}" style="left: {{debugReading ? 50 + debugOffset : 50}}%; color: {{listeningStopped ? '#7b8580' : debugMarkerColor}};">
       <view wx:if="{{pitchStable}}" class="pitch-check {{animateSuccess ? 'animate-success' : ''}}" aria-label="{{messages.inTune}}">
         <view class="check-short"></view>
         <view class="check-long"></view>
       </view>
       <text wx:elif="{{debugReading}}" class="pitch-value">{{debugDeviation > 0 ? '+' : ''}}{{debugDeviation}}</text>
     </view>
-    <text class="pitch-hint">{{debugReading || debugState === 'uncertain' ? messages[debugHintKey] : pluckHint}}</text>
+    <text class="pitch-hint">{{debugReading || debugState === 'uncertain' ? messages[debugHintKey] : listeningStopped ? '' : pluckHint}}</text>
   </view>
   <view class="headstock">
     <image class="headstock-image" src="/assets/guitar-headstock.svg" mode="aspectFit" aria-hidden="true"></image>
