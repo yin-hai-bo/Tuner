@@ -4,9 +4,9 @@ import { stripTypeScriptTypes } from 'node:module'
 import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
-import { selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
+import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
 
-function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings') {
+function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools') {
   const source = stripTypeScriptTypes(
     readFileSync(new URL(`../miniprogram/pages/${name}/${name}.ts`, import.meta.url), 'utf8')
       .replace(/^import .* from .*\r?\n/gm, ''),
@@ -17,7 +17,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   const audioLog = [], audios = [], toasts = []
   runInNewContext(source, {
     getMessages, getPreferredLanguage,
-    selectString, standardTuning, useAutomaticSelection,
+    getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection,
     Component: value => { definition = value },
     wx: {
       createInnerAudioContext: () => {
@@ -34,7 +34,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
         return audio
       },
       showToast: options => { toasts.push(options.title) },
-      getSystemInfoSync: () => ({ language: systemLanguage }),
+      getSystemInfoSync: () => ({ language: systemLanguage, platform }),
       getStorageSync: key => {
         if (unavailable) throw new Error('Storage unavailable')
         return storage.get(key)
@@ -57,6 +57,107 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   const hide = () => definition.pageLifetimes.hide.call(page)
   const detach = () => definition.lifetimes.detached.call(page)
   return { page, show, hide, detach, getTitle: () => title, tabs, audioLog, audios, toasts }
+}
+
+test('debug controls simulate all six strings and signed offsets without playing audio', () => {
+  const { page, audios } = createPage(new Map(), false, 'zh_CN', 'index')
+  assert.equal(page.data.debugEnabled, true)
+  assert.equal(page.data.debugOpen, false)
+  page.toggleDebugPanel()
+  assert.equal(page.data.debugOpen, true)
+  for (let index = 0; index < 6; index++) {
+    page.debugSelectString({ detail: { value: String(index) } })
+    for (const value of [-100, -5, 0, 5, 100]) {
+      page.debugChangeCents({ detail: { value } })
+      assert.equal(page.data.debugReading.target.number, 6 - index)
+      assert.equal(page.data.debugDeviation || 0, value)
+      assert.equal(page.data.debugAutoTarget, 6 - index)
+      assert.ok(Math.abs(page.data.debugOffset - value * .4) < .001)
+      assert.equal(page.data.debugHintKey, value < 0 ? 'pitchLow' : value > 0 ? 'pitchHigh' : 'holdPitch')
+    }
+  }
+  assert.equal(audios.length, 0)
+})
+
+test('deviations within two cents use a white outline and green-fill state, including exact boundaries', () => {
+  const { page } = createPage(new Map(), false, 'zh_CN', 'index')
+  for (let index = 0; index < 6; index++) {
+    page.debugSelectString({ detail: { value: String(index) } })
+    for (const value of [-2, -1, 0, 1, 2]) {
+      page.debugChangeCents({ detail: { value } })
+      assert.equal(page.data.debugInTune, true)
+      assert.equal(page.data.debugMarkerColor, '#f2f5f3')
+      assert.equal(page.data.debugHintKey, 'holdPitch')
+    }
+    for (const value of [-2.01, 2.01]) {
+      page.debugChangeCents({ detail: { value } })
+      assert.equal(page.data.debugInTune, false)
+    }
+  }
+})
+
+test('marker position and redness increase symmetrically with the deviation magnitude', () => {
+  const { page } = createPage(new Map(), false, 'en', 'index')
+  page.debugSelectString({ detail: { value: '0' } })
+  let previousGreen = 256, previousOffset = 0
+  for (const value of [3, 5, 20, 50, 100]) {
+    page.debugChangeCents({ detail: { value } })
+    const color = page.data.debugMarkerColor
+    const green = Number(color.match(/rgb\(244, (\d+),/)[1])
+    assert.ok(green <= previousGreen, 'Reducing the green channel shifts yellow toward red')
+    assert.ok(page.data.debugOffset > previousOffset)
+    previousGreen = green
+    previousOffset = page.data.debugOffset
+    page.debugChangeCents({ detail: { value: -value } })
+    assert.equal(page.data.debugMarkerColor, color)
+    assert.ok(Math.abs(page.data.debugOffset + previousOffset) < .001)
+  }
+  page.debugSetState({ currentTarget: { dataset: { state: 'silent' } } })
+  assert.equal(page.data.debugInTune, false)
+  assert.equal(page.data.debugMarkerColor, '#f2f5f3')
+  assert.equal(page.data.debugOffset, 0)
+})
+
+test('debug input respects manual selection and clears on silence, unreliable input, close and hide', () => {
+  const { page, hide } = createPage(new Map(), false, 'en', 'index')
+  page.toggleDebugPanel()
+  page.debugSelectString({ detail: { value: '1' } }) // Sounding string 5 A.
+  page.toggleAutomatic({ detail: { value: false } }) // Locked to string 6 E.
+  assert.equal(page.data.debugReading.target.number, 6)
+  assert.equal(page.data.debugDeviation, 500)
+  assert.equal(page.data.debugAutoTarget, 0, 'Manual mode must not flash an automatic candidate')
+  assert.equal(page.data.debugOffset, 40, 'Large manual deviations stop at the grid edge')
+  page.toggleAutomatic({ detail: { value: true } })
+  assert.equal(page.data.debugReading.target.number, 5)
+  for (const state of ['silent', 'uncertain']) {
+    page.debugSetState({ currentTarget: { dataset: { state } } })
+    assert.equal(page.data.debugState, state)
+    assert.equal(page.data.debugReading, null)
+    assert.equal(page.data.debugFrequency, '')
+    assert.equal(page.data.debugAutoTarget, 0)
+    assert.equal(page.data.debugOffset, 0)
+  }
+  page.debugSetState({ currentTarget: { dataset: { state: 'tone' } } })
+  page.toggleDebugPanel()
+  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.debugAutoTarget, 0)
+  page.debugSelectString({ detail: { value: '0' } })
+  hide()
+  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.debugAutoTarget, 0)
+})
+
+for (const platform of ['ios', 'android', 'windows']) {
+  test(`debug controls are hidden and inactive on ${platform}`, () => {
+    const { page } = createPage(new Map(), false, 'en', 'index', platform)
+    page.toggleDebugPanel()
+    page.debugSelectString({ detail: { value: '1' } })
+    page.debugChangeCents({ detail: { value: 5 } })
+    page.debugSetState({ currentTarget: { dataset: { state: 'tone' } } })
+    assert.equal(page.data.debugEnabled, false)
+    assert.equal(page.data.debugOpen, false)
+    assert.equal(page.data.debugReading, null)
+  })
 }
 
 test('tapping a peg replays from the start and switching strings replaces the previous sound', () => {
