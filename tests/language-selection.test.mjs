@@ -113,7 +113,7 @@ test('home receives frames, stops on hide and waits for file cleanup before rest
   assert.equal(session.recordingStops, 2)
 })
 
-test('live PCM produces a debug frequency without changing simulated feedback and clears on exit', () => {
+test('live PCM enters automatic confirmation and clears on exit', () => {
   const { page, recordingEvents, hide } = createPage(new Map(), false, 'en', 'index')
   const pcm = new ArrayBuffer(8192)
   const view = new DataView(pcm)
@@ -128,6 +128,73 @@ test('live PCM produces a debug frequency without changing simulated feedback an
   assert.equal(page.data.liveFrequency, '')
   recordingEvents.FrameRecorded({ frameBuffer: pcm })
   assert.equal(page.data.liveFrequency, '')
+})
+
+function pcmTone(frequency) {
+  const frame = new ArrayBuffer(8192)
+  const view = new DataView(frame)
+  for (let i = 0; i < 4096; i++) view.setInt16(i * 2, Math.round(24000 * Math.sin(2 * Math.PI * frequency * i / 16000)), true)
+  return frame
+}
+
+for (const number of [6, 5, 4, 3, 2, 1]) {
+  test(`live PCM string ${number} drives feedback after confirmation with the debug panel closed`, () => {
+    const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
+    recordingEvents.Start()
+    const frame = pcmTone(getStringFrequency(number) * 2 ** (-20 / 1200))
+    recordingEvents.FrameRecorded({ frameBuffer: frame })
+    tick(256)
+    recordingEvents.FrameRecorded({ frameBuffer: frame })
+    assert.equal(page.data.debugReading, null)
+    tick(256)
+    recordingEvents.FrameRecorded({ frameBuffer: frame })
+    assert.equal(page.data.debugOpen, false)
+    assert.equal(page.data.debugAutoTarget, number)
+    assert.equal(page.data.debugDeviation, -20)
+    assert.ok(page.data.debugOffset < 0)
+    assert.equal(page.data.debugHintKey, 'pitchLow')
+    assert.equal(page.data.pitchTrail.length, 0)
+    tick(100)
+    assert.equal(page.data.pitchTrail.length, 1)
+  })
+}
+
+test('manual live input locks the selected string and clears on interruption', () => {
+  const { page, recordingEvents } = createPage(new Map(), false, 'en', 'index', 'android')
+  page.selectTuner({ currentTarget: { dataset: { number: 6 } } })
+  recordingEvents.Start()
+  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
+  assert.equal(page.data.debugReading.target.number, 6)
+  assert.equal(page.data.debugDeviation, 500)
+  assert.equal(page.data.debugHintKey, 'pitchHigh')
+  assert.equal(page.data.debugAutoTarget, 0)
+  recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
+  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.debugState, 'silent')
+  page.updateLiveReading(null, 'uncertain')
+  assert.equal(page.data.debugMarkerColor, '#7b8580')
+  assert.equal(page.data.debugHintKey, 'unreliableInput')
+  recordingEvents.InterruptionBegin()
+  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.debugMarkerColor, '#f2f5f3')
+  assert.equal(page.data.selection.target.number, 6)
+})
+
+test('missing live frames reset confirmation, and simulation cannot confirm stale microphone input', () => {
+  const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index')
+  recordingEvents.Start()
+  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
+  tick(1000)
+  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
+  assert.equal(page.data.debugReading, null)
+  page.toggleDebugPanel()
+  page.debugChangeCents({ detail: { value: 20 } })
+  tick(300)
+  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
+  assert.equal(page.data.debugReading.target.number, 6)
+  assert.equal(page.data.debugDeviation, 20)
+  page.toggleDebugPanel()
+  assert.equal(page.data.debugReading, null)
 })
 
 test('recording limit and interruption require an explicit continue action', async () => {
@@ -504,6 +571,7 @@ test('waiting pitch marker is always present after selecting a string', () => {
   const marker = template.match(/<view\b[^>]*class="pitch-marker\b[^>]*>/)[0]
   assert.doesNotMatch(marker, /wx:if|wx:elif/)
   assert.doesNotMatch(template, /isReferencePlaying|highlightedStrings/)
+  assert.doesNotMatch(template.slice(template.indexOf('class="pitch-feedback"')), /debugOpen/)
 })
 
 test('language changes update both tab labels on settings and when showing home', () => {

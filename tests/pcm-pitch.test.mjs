@@ -69,3 +69,19 @@ test('reset discards partial samples and bytes from the previous session', () =>
   reader.push(new ArrayBuffer(8192))
   assert.equal(readings.at(-1), null)
 })
+
+test('PCM distinguishes a reliable tone, silence and unreliable noise', () => {
+  const states = []
+  const reader = createPcmPitchReader((frequency, state) => states.push(state))
+  reader.push(tone(110))
+  reader.push(new ArrayBuffer(8192))
+  let seed = 7
+  const noise = new ArrayBuffer(8192)
+  const data = new DataView(noise)
+  for (let i = 0; i < 4096; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    data.setInt16(i * 2, (seed >>> 16) - 32768, true)
+  }
+  reader.push(noise)
+  assert.deepEqual(states, ['tone', 'silent', 'uncertain'])
+})

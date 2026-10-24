@@ -1,7 +1,7 @@
 import { getMessages, getPreferredLanguage } from '../../utils/i18n'
 import { createAutomaticStringConfirmation } from '../../utils/automatic-string-confirmation'
 import { createPcmRecorder, RecordingState } from '../../utils/pcm-recorder'
-import { createPcmPitchReader } from '../../utils/pcm-pitch'
+import { createPcmPitchReader, PitchInputState } from '../../utils/pcm-pitch'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../../utils/tuning-selection'
 
 const languageStorageKey = 'preferredLanguage'
@@ -11,14 +11,14 @@ type RecordingPage = {
   data: { microphonePermission: string; recordingRequested: boolean }
   setData: (data: Record<string, unknown>) => void
   startRecording: () => void
+  updateLiveReading: (frequency: number | null, state: PitchInputState) => void
 }
 let recordingPage: RecordingPage | undefined
 let pcmRecorder: ReturnType<typeof createPcmRecorder> | undefined
 let recordingState: RecordingState = 'idle'
 let permissionEpoch = 0
-const pcmPitch = createPcmPitchReader(frequency => recordingPage?.setData({
-  liveFrequency: frequency === null ? '' : frequency.toFixed(2),
-}))
+let lastLiveInputAt: number | null = null
+const pcmPitch = createPcmPitchReader((frequency, state) => recordingPage?.updateLiveReading(frequency, state))
 
 Component({
   data: {
@@ -99,6 +99,7 @@ Component({
             if (state !== 'recording') {
               pcmPitch.reset()
               recordingPage?.setData({ liveFrequency: '' })
+              recordingPage?.updateLiveReading(null, 'silent')
             }
             recordingPage?.setData({ recordingState: state })
             if (['interrupted', 'ended', 'error'].includes(state)) recordingPage?.setData({ recordingRequested: false })
@@ -121,6 +122,7 @@ Component({
       permissionEpoch++
       recordingPage = undefined
       pcmPitch.reset()
+      this.applyPitchReading(null, 'silent')
       this.setData({ permissionBusy: false, recordingRequested: false, pcmBytes: 0, liveFrequency: '' })
       pcmRecorder?.stop()
     },
@@ -180,9 +182,13 @@ Component({
     samplePitchTrail() {
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
       const now = Date.now()
-      const { pitchTrail, debugOpen, debugReading, debugOffset, debugMarkerColor } = this.data
+      if (!this.data.debugOpen && lastLiveInputAt !== null && now - lastLiveInputAt >= 1000) {
+        this.applyPitchReading(null, 'silent')
+        lastLiveInputAt = null
+      }
+      const { pitchTrail, debugReading, debugOffset, debugMarkerColor } = this.data
       const points = pitchTrail.filter(point => point.id > now - 20000)
-      if (debugOpen && debugReading) {
+      if (debugReading) {
         points.push({ id: now, offset: debugOffset,
           color: this.data.debugInTune ? '#16834b' : debugMarkerColor })
       }
@@ -193,14 +199,23 @@ Component({
     toggleDebugPanel() {
       if (!this.data.debugEnabled) return
       this.setData({ debugOpen: !this.data.debugOpen })
-      if (!this.data.debugOpen) this.updateDebugReading('silent')
+      this.applyPitchReading(null, 'silent')
+    },
+    updateLiveReading(frequency: number | null, state: PitchInputState) {
+      lastLiveInputAt = Date.now()
+      this.setData({ liveFrequency: frequency === null ? '' : frequency.toFixed(2) })
+      if (!this.data.debugOpen) this.applyPitchReading(frequency, state)
     },
     updateDebugReading(state: 'tone' | 'silent' | 'uncertain') {
       if (!this.data.debugEnabled) return
-      const { debugIndex, debugCents, selection } = this.data
+      const { debugIndex, debugCents } = this.data
       const base = getStringFrequency(standardTuning[debugIndex].number)!
       const frequency = base * 2 ** (debugCents / 1200)
-      const candidate = state === 'tone'
+      this.applyPitchReading(state === 'tone' ? frequency : null, state)
+    },
+    applyPitchReading(frequency: number | null, state: PitchInputState) {
+      const { selection } = this.data
+      const candidate = state === 'tone' && frequency !== null
         ? getPitchReading(frequency, selection.mode === 'manual' ? selection.target.number : undefined)
         : null
       const confirmed = confirmAutomaticString(
@@ -211,11 +226,11 @@ Component({
       // Allow only negligible floating-point error at the exact 2-cent boundary.
       const debugInTune = reading !== null && distance <= 2 + 1e-7
       const redness = Math.max(0, Math.min(1, (distance - 2) / 98))
-      const debugMarkerColor = !reading || debugInTune ? '#f2f5f3'
+      const debugMarkerColor = !reading && state === 'uncertain' ? '#7b8580' : !reading || debugInTune ? '#f2f5f3'
         : `rgb(244, ${Math.round(200 - 130 * redness)}, ${Math.round(78 - 8 * redness)})`
       const debugHintKey = !reading ? (state === 'uncertain' ? 'unreliableInput' : 'pluckString')
         : debugInTune ? 'holdPitch' : reading.cents < 0 ? 'pitchLow' : 'pitchHigh'
-      this.setData({ debugState: state, debugFrequency: state === 'tone' ? frequency.toFixed(3) : '',
+      this.setData({ debugState: state, debugFrequency: frequency !== null ? frequency.toFixed(3) : '',
         debugReading: reading, debugDeviation: cents,
         debugOffset: reading ? Math.max(-40, Math.min(40, reading.cents * .4)) : 0,
         debugAutoTarget: reading && selection.mode === 'auto' ? reading.target.number : 0,
@@ -253,7 +268,8 @@ Component({
       if (selection === this.data.selection) return
       this.setData({ selection })
       this.updatePluckHint()
-      this.updateDebugReading(this.data.debugState)
+      if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
+      else this.applyPitchReading(null, 'silent')
     },
     toggleAutomatic(event: WechatMiniprogram.SwitchChange) {
       const selection = event.detail.value
@@ -261,7 +277,8 @@ Component({
         : selectString(this.data.selection, 6)
       this.setData({ selection })
       this.updatePluckHint()
-      this.updateDebugReading(this.data.debugState)
+      if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
+      else this.applyPitchReading(null, 'silent')
     },
   },
 })
