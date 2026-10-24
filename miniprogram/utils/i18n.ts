@@ -29,6 +29,7 @@ const messages = {
     pitchLow: '偏低，请缓慢拧紧',
     pitchHigh: '偏高，请缓慢放松',
     holdPitch: '请保持音高，等待稳定',
+    inTune: '已调准',
     unreliableInput: '请靠近手机，单独拨响一根琴弦',
   },
   en: {
@@ -61,6 +62,7 @@ const messages = {
     pitchLow: 'Too low, tighten slowly',
     pitchHigh: 'Too high, loosen slowly',
     holdPitch: 'Hold the pitch steady',
+    inTune: 'In tune',
     unreliableInput: 'Move closer and pluck a single string',
   },
 }

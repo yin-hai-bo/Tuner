@@ -1,5 +1,6 @@
 import { getMessages, getPreferredLanguage } from '../../utils/i18n'
 import { createAutomaticStringConfirmation } from '../../utils/automatic-string-confirmation'
+import { createStableTuningConfirmation } from '../../utils/stable-tuning'
 import { createPcmRecorder, RecordingState } from '../../utils/pcm-recorder'
 import { createPcmPitchReader, PitchInputState } from '../../utils/pcm-pitch'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../../utils/tuning-selection'
@@ -7,6 +8,7 @@ import { getPitchReading, getStringFrequency, selectString, standardTuning, useA
 const languageStorageKey = 'preferredLanguage'
 let trailTimer: ReturnType<typeof setInterval> | undefined
 const confirmAutomaticString = createAutomaticStringConfirmation()
+const confirmStableTuning = createStableTuningConfirmation()
 type RecordingPage = {
   data: { microphonePermission: string; recordingRequested: boolean }
   setData: (data: Record<string, unknown>) => void
@@ -44,6 +46,7 @@ Component({
     debugDeviation: 0,
     debugOffset: 0,
     debugInTune: false,
+    pitchStable: false,
     debugMarkerColor: '#f2f5f3',
     debugAutoTarget: 0,
     debugHintKey: 'pluckString',
@@ -175,9 +178,10 @@ Component({
     },
     stopPitchTrail() {
       confirmAutomaticString(null, Date.now())
+      confirmStableTuning(null, 0, Date.now())
       if (trailTimer !== undefined) clearInterval(trailTimer)
       trailTimer = undefined
-      this.setData({ pitchTrail: [] })
+      this.setData({ pitchTrail: [], pitchStable: false })
     },
     samplePitchTrail() {
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
@@ -225,16 +229,17 @@ Component({
       const distance = reading ? Math.abs(reading.cents) : 0
       // Allow only negligible floating-point error at the exact 2-cent boundary.
       const debugInTune = reading !== null && distance <= 2 + 1e-7
+      const pitchStable = confirmStableTuning(reading ? reading.target.number : null, reading ? reading.cents : 0, Date.now())
       const redness = Math.max(0, Math.min(1, (distance - 2) / 98))
       const debugMarkerColor = !reading && state === 'uncertain' ? '#7b8580' : !reading || debugInTune ? '#f2f5f3'
         : `rgb(244, ${Math.round(200 - 130 * redness)}, ${Math.round(78 - 8 * redness)})`
       const debugHintKey = !reading ? (state === 'uncertain' ? 'unreliableInput' : 'pluckString')
-        : debugInTune ? 'holdPitch' : reading.cents < 0 ? 'pitchLow' : 'pitchHigh'
+        : pitchStable ? 'inTune' : debugInTune ? 'holdPitch' : reading.cents < 0 ? 'pitchLow' : 'pitchHigh'
       this.setData({ debugState: state, debugFrequency: frequency !== null ? frequency.toFixed(3) : '',
         debugReading: reading, debugDeviation: cents,
         debugOffset: reading ? Math.max(-40, Math.min(40, reading.cents * .4)) : 0,
         debugAutoTarget: reading && selection.mode === 'auto' ? reading.target.number : 0,
-        debugHintKey, debugInTune, debugMarkerColor })
+        debugHintKey, debugInTune, debugMarkerColor, pitchStable })
     },
     debugSelectString(event: WechatMiniprogram.PickerChange) {
       const index = Number(event.detail.value)
@@ -267,6 +272,7 @@ Component({
       const selection = selectString(this.data.selection, number)
       if (selection === this.data.selection) return
       this.setData({ selection })
+      confirmStableTuning(null, 0, Date.now())
       this.updatePluckHint()
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
       else this.applyPitchReading(null, 'silent')
@@ -276,6 +282,7 @@ Component({
         ? useAutomaticSelection()
         : selectString(this.data.selection, 6)
       this.setData({ selection })
+      confirmStableTuning(null, 0, Date.now())
       this.updatePluckHint()
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
       else this.applyPitchReading(null, 'silent')

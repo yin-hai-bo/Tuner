@@ -5,6 +5,7 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 import { createAutomaticStringConfirmation } from '../miniprogram/utils/automatic-string-confirmation.ts'
+import { createStableTuningConfirmation } from '../miniprogram/utils/stable-tuning.ts'
 import { createPcmRecorder } from '../miniprogram/utils/pcm-recorder.ts'
 import { detectPitch } from '../miniprogram/utils/pitch-detection.ts'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
@@ -35,6 +36,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
     clearInterval: id => timers.delete(id),
     getMessages, getPreferredLanguage,
     createAutomaticStringConfirmation,
+    createStableTuningConfirmation,
     createPcmRecorder,
     createPcmPitchReader,
     getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection,
@@ -136,6 +138,43 @@ function pcmTone(frequency) {
   for (let i = 0; i < 4096; i++) view.setInt16(i * 2, Math.round(24000 * Math.sin(2 * Math.PI * frequency * i / 16000)), true)
   return frame
 }
+
+test('live PCM shows the tuned check only after 500ms and resets on mode changes', () => {
+  const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
+  page.toggleAutomatic({ detail: { value: false } })
+  recordingEvents.Start()
+  const frame = pcmTone(getStringFrequency(6))
+  recordingEvents.FrameRecorded({ frameBuffer: frame })
+  assert.equal(page.data.debugInTune, true)
+  assert.equal(page.data.pitchStable, false)
+  assert.equal(page.data.debugHintKey, 'holdPitch')
+  tick(499)
+  recordingEvents.FrameRecorded({ frameBuffer: frame })
+  assert.equal(page.data.pitchStable, false)
+  tick(1)
+  recordingEvents.FrameRecorded({ frameBuffer: frame })
+  assert.equal(page.data.pitchStable, true)
+  assert.equal(page.data.debugHintKey, 'inTune')
+  page.toggleAutomatic({ detail: { value: true } })
+  assert.equal(page.data.pitchStable, false)
+})
+
+test('stable tuning starts after automatic string confirmation, not at the first candidate', () => {
+  const { page, tick } = createPage(new Map(), false, 'en', 'index', 'android')
+  const input = () => page.updateLiveReading(getStringFrequency(6), 'tone')
+  input()
+  tick(300)
+  input()
+  assert.equal(page.data.debugAutoTarget, 6)
+  tick(499)
+  input()
+  assert.equal(page.data.pitchStable, false)
+  tick(1)
+  input()
+  assert.equal(page.data.pitchStable, true)
+  page.updateLiveReading(null, 'uncertain')
+  assert.equal(page.data.pitchStable, false)
+})
 
 for (const number of [6, 5, 4, 3, 2, 1]) {
   test(`live PCM string ${number} drives feedback after confirmation with the debug panel closed`, () => {
@@ -571,6 +610,7 @@ test('waiting pitch marker is always present after selecting a string', () => {
   const marker = template.match(/<view\b[^>]*class="pitch-marker\b[^>]*>/)[0]
   assert.doesNotMatch(marker, /wx:if|wx:elif/)
   assert.doesNotMatch(template, /isReferencePlaying|highlightedStrings/)
+  assert.match(template, /wx:if="\{\{pitchStable\}\}" class="pitch-check"/)
   assert.doesNotMatch(template.slice(template.indexOf('class="pitch-feedback"')), /debugOpen/)
 })
 
