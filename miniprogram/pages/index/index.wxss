@@ -99,6 +99,18 @@ page {
 }
 
 .debug-toggle { margin: 0; font-size: 22rpx; background: #202925; color: #9aa7a1; }
+.microphone-button { margin: 0; font-size: 24rpx; background: #00cba9; color: #101413; }
+.microphone-notice {
+  position: absolute;
+  z-index: 1;
+  top: 100rpx;
+  left: 32rpx;
+  right: 32rpx;
+  text-align: center;
+  color: #a7b2ac;
+  font-size: 22rpx;
+  line-height: 32rpx;
+}
 .debug-panel {
   position: fixed;
   z-index: 10;

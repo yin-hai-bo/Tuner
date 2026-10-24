@@ -7,7 +7,7 @@ import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 import { createAutomaticStringConfirmation } from '../miniprogram/utils/automatic-string-confirmation.ts'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
 
-function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools') {
+function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools', wxOverrides = {}) {
   const source = stripTypeScriptTypes(
     readFileSync(new URL(`../miniprogram/pages/${name}/${name}.ts`, import.meta.url), 'utf8')
       .replace(/^import .* from .*\r?\n/gm, ''),
@@ -28,6 +28,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
     Component: value => { definition = value },
     wx: {
       createInnerAudioContext: () => { audios.push({}); return {} },
+      getSetting: options => options.success({ authSetting: { 'scope.record': true } }),
       getSystemInfoSync: () => ({ language: systemLanguage, platform }),
       getStorageSync: key => {
         if (unavailable) throw new Error('Storage unavailable')
@@ -39,6 +40,7 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
       },
       setNavigationBarTitle: value => { title = value.title },
       setTabBarItem: value => { tabs[value.index] = value.text },
+      ...wxOverrides,
     },
   })
   const page = {
@@ -53,6 +55,90 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   const tick = (elapsed = 100) => { now += elapsed; for (const callback of timers.values()) callback() }
   return { page, show, hide, detach, tick, timers, getTitle: () => title, tabs, audios }
 }
+
+function createPermissionPage() {
+  const requests = { getSetting: [], authorize: [], openSetting: [] }
+  const overrides = Object.fromEntries(Object.entries(requests).map(([name, calls]) => [name, options => calls.push(options)]))
+  return { ...createPage(new Map(), false, 'en', 'index', 'devtools', overrides), requests }
+}
+
+test('entering home checks microphone permission and requests it once without recording', () => {
+  const { page, requests, show } = createPermissionPage()
+  assert.equal(requests.getSetting.length, 1)
+  page.requestMicrophonePermission()
+  page.requestMicrophonePermission()
+  assert.equal(requests.getSetting.length, 1)
+  requests.getSetting[0].success({ authSetting: {} })
+  assert.equal(requests.authorize[0].scope, 'scope.record')
+  requests.authorize[0].success()
+  assert.equal(page.data.microphonePermission, 'granted')
+  assert.equal(page.data.permissionBusy, false)
+  page.requestMicrophonePermission()
+  assert.equal(requests.authorize.length, 1)
+  show()
+  assert.equal(page.data.microphonePermission, 'unknown', 'Returning must allow a fresh permission check')
+  assert.equal(requests.getSetting.length, 2, 'Returning must recheck permission automatically')
+  requests.getSetting[1].success({ authSetting: { 'scope.record': true } })
+  assert.equal(requests.authorize.length, 1, 'Granted permission must not prompt again')
+})
+
+for (const allowed of [true, false]) {
+  test(`previous microphone permission ${allowed} is respected without requesting authorization again`, () => {
+    const { page, requests, show } = createPermissionPage()
+    page.requestMicrophonePermission()
+    requests.getSetting[0].success({ authSetting: { 'scope.record': allowed } })
+    assert.equal(page.data.microphonePermission, allowed ? 'granted' : 'denied')
+    assert.equal(page.data.permissionBusy, false)
+    assert.equal(requests.authorize.length, 0)
+    show()
+    requests.getSetting[1].success({ authSetting: { 'scope.record': allowed } })
+    assert.equal(requests.authorize.length, 0, 'Re-entering must not repeat a previously answered permission prompt')
+  })
+}
+
+test('home offers permission buttons only for denial or API errors', () => {
+  const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
+  const buttons = [...template.matchAll(/<button\b[^>]*class="microphone-button"[^>]*>/g)]
+  assert.equal(buttons.length, 2)
+  assert.match(buttons[0][0], /microphonePermission === 'denied'/)
+  assert.match(buttons[1][0], /microphonePermission === 'error'/)
+  assert.doesNotMatch(template, /startTuning|microphoneReady/)
+})
+
+test('denial offers settings, and returning from settings never starts recording', () => {
+  const { page, requests } = createPermissionPage()
+  page.requestMicrophonePermission()
+  requests.getSetting[0].success({ authSetting: {} })
+  requests.authorize[0].fail()
+  requests.getSetting[1].success({ authSetting: { 'scope.record': false } })
+  assert.equal(page.data.microphonePermission, 'denied')
+  assert.equal(requests.openSetting.length, 0, 'Do not open settings without a click')
+  for (const allowed of [false, true]) {
+    page.openMicrophoneSettings()
+    page.openMicrophoneSettings()
+    assert.equal(requests.openSetting.length, allowed ? 2 : 1)
+    requests.openSetting.at(-1).success({ authSetting: { 'scope.record': allowed } })
+    assert.equal(page.data.microphonePermission, allowed ? 'granted' : 'denied')
+    assert.equal(page.data.permissionBusy, false)
+  }
+})
+
+test('permission API errors clear the busy state and allow retry without claiming denial', () => {
+  const { page, requests } = createPermissionPage()
+  page.requestMicrophonePermission()
+  requests.getSetting[0].fail()
+  assert.equal(page.data.microphonePermission, 'error')
+  page.requestMicrophonePermission()
+  requests.getSetting[1].success({ authSetting: {} })
+  requests.authorize[0].fail()
+  requests.getSetting[2].success({ authSetting: {} })
+  assert.equal(page.data.microphonePermission, 'error')
+  assert.equal(page.data.permissionBusy, false)
+  page.openMicrophoneSettings()
+  requests.openSetting[0].fail()
+  assert.equal(page.data.microphonePermission, 'error')
+  assert.equal(page.data.permissionBusy, false)
+})
 
 test('pitch trail samples marker position and color, preserves history and expires old points', () => {
   const { page, tick } = createPage(new Map(), false, 'en', 'index')

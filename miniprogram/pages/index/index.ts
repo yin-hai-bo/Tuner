@@ -10,6 +10,8 @@ Component({
   data: {
     messages: getMessages('en'),
     pluckHint: getMessages('en').pluckString,
+    microphonePermission: 'unknown' as 'unknown' | 'granted' | 'denied' | 'error',
+    permissionBusy: false,
     selection: useAutomaticSelection(),
     leftTuners: standardTuning.slice(0, 3).reverse(),
     rightTuners: standardTuning.slice(3),
@@ -48,16 +50,51 @@ Component({
       }
       const system = wx.getSystemInfoSync()
       const messages = getMessages(getPreferredLanguage(savedLanguage, system.language))
-      this.setData({ messages, debugEnabled: system.platform === 'devtools' })
+      this.setData({ messages, debugEnabled: system.platform === 'devtools', microphonePermission: 'unknown' })
       this.stopPitchTrail()
       trailTimer = setInterval(() => this.samplePitchTrail(), 100)
       this.updatePluckHint()
       wx.setNavigationBarTitle({ title: messages.title })
       wx.setTabBarItem({ index: 0, text: messages.tune })
       wx.setTabBarItem({ index: 1, text: messages.settings })
+      this.requestMicrophonePermission()
     },
   },
   methods: {
+    setMicrophonePermission(microphonePermission: 'granted' | 'denied' | 'error') {
+      this.setData({ microphonePermission, permissionBusy: false })
+    },
+    requestMicrophonePermission() {
+      if (this.data.permissionBusy || this.data.microphonePermission === 'granted') return
+      this.setData({ permissionBusy: true })
+      wx.getSetting({
+        success: result => {
+          const allowed = result.authSetting['scope.record']
+          if (allowed !== undefined) {
+            this.setMicrophonePermission(allowed ? 'granted' : 'denied')
+            return
+          }
+          wx.authorize({
+            scope: 'scope.record',
+            success: () => this.setMicrophonePermission('granted'),
+            fail: () => wx.getSetting({
+              success: result => this.setMicrophonePermission(
+                result.authSetting['scope.record'] === false ? 'denied' : 'error'),
+              fail: () => this.setMicrophonePermission('error'),
+            }),
+          })
+        },
+        fail: () => this.setMicrophonePermission('error'),
+      })
+    },
+    openMicrophoneSettings() {
+      if (this.data.permissionBusy) return
+      this.setData({ permissionBusy: true })
+      wx.openSetting({
+        success: result => this.setMicrophonePermission(result.authSetting['scope.record'] ? 'granted' : 'denied'),
+        fail: () => this.setMicrophonePermission('error'),
+      })
+    },
     stopPitchTrail() {
       confirmAutomaticString(null, Date.now())
       if (trailTimer !== undefined) clearInterval(trailTimer)
