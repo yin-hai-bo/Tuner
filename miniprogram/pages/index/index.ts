@@ -58,6 +58,7 @@ Component({
     debugOffset: 0,
     debugInTune: false,
     pitchStable: false,
+    animateSuccess: false,
     debugMarkerColor: '#f2f5f3',
     debugAutoTarget: 0,
     debugHintKey: 'pluckString',
@@ -196,7 +197,7 @@ Component({
       confirmStableTuning(null, 0, Date.now())
       if (trailTimer !== undefined) clearInterval(trailTimer)
       trailTimer = undefined
-      this.setData({ pitchTrail: [], pitchStable: false })
+      this.setData({ pitchTrail: [], pitchStable: false, animateSuccess: false })
     },
     samplePitchTrail() {
       if (successPlaying) return
@@ -263,6 +264,7 @@ Component({
       const stable = confirmStableTuning(reading ? reading.target.number : null, reading ? reading.cents : 0, now)
       const pitchStable = stable || (holding && this.data.pitchStable && debugInTune &&
         this.data.debugReading?.target.number === reading?.target.number)
+      const success = confirmSuccess.update(reading?.target.number ?? null, reading?.cents ?? 0, stable)
       lastReadingAt = reading ? now : null
       const redness = Math.max(0, Math.min(1, (distance - 2) / 98))
       const debugMarkerColor = !reading && state === 'uncertain' ? '#7b8580' : !reading || debugInTune ? '#f2f5f3'
@@ -273,8 +275,9 @@ Component({
         debugReading: reading, debugDeviation: cents,
         debugOffset: reading ? Math.max(-40, Math.min(40, reading.cents * .4)) : 0,
         debugAutoTarget: reading && selection.mode === 'auto' ? reading.target.number : 0,
-        debugHintKey, debugInTune, debugMarkerColor, pitchStable })
-      if (confirmSuccess.update(reading?.target.number ?? null, reading?.cents ?? 0, stable)) successSound.play()
+        debugHintKey, debugInTune, debugMarkerColor, pitchStable,
+        animateSuccess: pitchStable && (success || this.data.animateSuccess) })
+      if (success) successSound.play()
     },
     resetSuccessFeedback() {
       successSound.stop()

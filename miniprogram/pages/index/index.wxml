@@ -34,7 +34,7 @@
   </view>
   <view class="pitch-feedback">
     <view class="pitch-marker {{debugInTune ? 'in-tune' : ''}} {{!debugReading && debugState !== 'uncertain' ? 'waiting' : ''}}" style="left: {{debugReading ? 50 + debugOffset : 50}}%; color: {{debugMarkerColor}};">
-      <view wx:if="{{pitchStable}}" class="pitch-check" aria-label="{{messages.inTune}}">
+      <view wx:if="{{pitchStable}}" class="pitch-check {{animateSuccess ? 'animate-success' : ''}}" aria-label="{{messages.inTune}}">
         <view class="check-short"></view>
         <view class="check-long"></view>
       </view>

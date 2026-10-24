@@ -258,12 +258,14 @@ page {
   height: 100%;
   border-radius: 2rpx;
   background: #f2f5f3;
-  transform: scaleX(0);
   transform-origin: left center;
+}
+.animate-success .check-short::after, .animate-success .check-long::after {
+  transform: scaleX(0);
   animation: check-stroke .12s linear forwards;
 }
 /* Continue from the first stroke's endpoint, completing the check in 0.4s. */
-.check-long::after { animation-duration: .28s; animation-delay: .12s; }
+.animate-success .check-long::after { animation-duration: .28s; animation-delay: .12s; }
 @keyframes check-stroke {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
