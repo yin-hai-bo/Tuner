@@ -104,10 +104,6 @@ Component({
       this.setData({ recordingRequested: true })
       pcmRecorder.start()
     },
-    pauseRecording() {
-      this.setData({ recordingRequested: false })
-      pcmRecorder?.stop()
-    },
     leaveMicrophone() {
       if (recordingPage !== this) return
       permissionEpoch++

@@ -108,26 +108,21 @@ test('home receives frames, stops on hide and waits for file cleanup before rest
   assert.equal(session.recordingStops, 2)
 })
 
-test('pause, recording limit and interruption require an explicit continue action', async () => {
+test('recording limit and interruption require an explicit continue action', async () => {
   const { page, recordingEvents, recordingStarts } = createPage(new Map(), false, 'en', 'index')
-  recordingEvents.Start()
-  page.pauseRecording()
-  await recordingEvents.Stop({ tempFilePath: 'wxfile://paused.pcm' })
-  assert.equal(recordingStarts.length, 1)
-  page.startRecording()
   recordingEvents.Start()
   await recordingEvents.Stop({ tempFilePath: 'wxfile://limit.pcm' })
   assert.equal(page.data.recordingState, 'ended')
-  assert.equal(recordingStarts.length, 2)
+  assert.equal(recordingStarts.length, 1)
   page.startRecording()
   recordingEvents.Start()
   recordingEvents.InterruptionBegin()
   await recordingEvents.Stop({ tempFilePath: 'wxfile://interrupted.pcm' })
   recordingEvents.InterruptionEnd()
   assert.equal(page.data.recordingState, 'interrupted')
-  assert.equal(recordingStarts.length, 3)
+  assert.equal(recordingStarts.length, 2)
   page.startRecording()
-  assert.equal(recordingStarts.length, 4)
+  assert.equal(recordingStarts.length, 3)
 })
 
 test('file cleanup failure reaches the page instead of silently restarting recording', async () => {
@@ -142,19 +137,21 @@ test('file cleanup failure reaches the page instead of silently restarting recor
 })
 
 for (const platform of ['devtools', 'ios', 'android']) {
-  test(`developer tool temporary URLs do not break pause only on ${platform}`, async () => {
+  test(`developer tool temporary URLs do not break returning to home only on ${platform}`, async () => {
     let unlinkCalls = 0
     const tempFilePath = 'http://tmp/recording.durationTime=26335.PCM'
-    const { page, recordingEvents } = createPage(new Map(), false, 'en', 'index', platform, {
+    const { page, recordingEvents, hide, show, recordingStarts } = createPage(new Map(), false, 'en', 'index', platform, {
       getFileSystemManager: () => ({ unlink: options => {
         unlinkCalls++
         options.fail({ errMsg: `unlink:fail permission denied, open ${tempFilePath}` })
       } }),
     })
     recordingEvents.Start()
-    page.pauseRecording()
+    hide()
     await recordingEvents.Stop({ tempFilePath })
-    assert.equal(page.data.recordingState, platform === 'devtools' ? 'idle' : 'error')
+    show()
+    assert.equal(page.data.recordingState, platform === 'devtools' ? 'starting' : 'error')
+    assert.equal(recordingStarts.length, platform === 'devtools' ? 2 : 1)
     assert.equal(unlinkCalls, platform === 'devtools' ? 0 : 1)
   })
 }
@@ -198,10 +195,11 @@ for (const allowed of [true, false]) {
 test('home offers permission buttons for denial or API errors, and recording controls separately', () => {
   const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
   const buttons = [...template.matchAll(/<button\b[^>]*class="microphone-button"[^>]*>/g)]
-  assert.equal(buttons.length, 4)
+  assert.equal(buttons.length, 3)
   assert.match(buttons[0][0], /microphonePermission === 'denied'/)
   assert.match(buttons[1][0], /microphonePermission === 'error'/)
   assert.doesNotMatch(template, /startTuning|microphoneReady/)
+  assert.doesNotMatch(template, /pauseRecording|pauseListening|recordingState === 'idle'/)
 })
 
 test('denial offers settings, and recording starts only when settings grant permission', () => {
