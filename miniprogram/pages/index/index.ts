@@ -1,10 +1,20 @@
 import { getMessages, getPreferredLanguage } from '../../utils/i18n'
 import { createAutomaticStringConfirmation } from '../../utils/automatic-string-confirmation'
+import { createPcmRecorder, RecordingState } from '../../utils/pcm-recorder'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../../utils/tuning-selection'
 
 const languageStorageKey = 'preferredLanguage'
 let trailTimer: ReturnType<typeof setInterval> | undefined
 const confirmAutomaticString = createAutomaticStringConfirmation()
+type RecordingPage = {
+  data: { microphonePermission: string; recordingRequested: boolean }
+  setData: (data: Record<string, unknown>) => void
+  startRecording: () => void
+}
+let recordingPage: RecordingPage | undefined
+let pcmRecorder: ReturnType<typeof createPcmRecorder> | undefined
+let recordingState: RecordingState = 'idle'
+let permissionEpoch = 0
 
 Component({
   data: {
@@ -12,6 +22,9 @@ Component({
     pluckHint: getMessages('en').pluckString,
     microphonePermission: 'unknown' as 'unknown' | 'granted' | 'denied' | 'error',
     permissionBusy: false,
+    recordingState: 'idle' as RecordingState,
+    recordingRequested: false,
+    pcmBytes: 0,
     selection: useAutomaticSelection(),
     leftTuners: standardTuning.slice(0, 3).reverse(),
     rightTuners: standardTuning.slice(3),
@@ -33,15 +46,20 @@ Component({
   },
   lifetimes: {
     detached() {
+      this.leaveMicrophone()
       this.stopPitchTrail()
     },
   },
   pageLifetimes: {
     hide() {
+      this.leaveMicrophone()
       this.stopPitchTrail()
       this.updateDebugReading('silent')
     },
     show() {
+      permissionEpoch++
+      recordingPage = this
+      this.setData({ permissionBusy: false, recordingState })
       let savedLanguage: unknown
       try {
         savedLanguage = wx.getStorageSync(languageStorageKey)
@@ -61,38 +79,86 @@ Component({
     },
   },
   methods: {
+    startRecording() {
+      if (recordingPage !== this || this.data.microphonePermission !== 'granted') return
+      if (!pcmRecorder) {
+        const isDevtools = this.data.debugEnabled
+        pcmRecorder = createPcmRecorder(wx.getRecorderManager(),
+          frame => recordingPage?.setData({ pcmBytes: frame.byteLength }),
+          state => {
+            recordingState = state
+            recordingPage?.setData({ recordingState: state })
+            if (['interrupted', 'ended', 'error'].includes(state)) recordingPage?.setData({ recordingRequested: false })
+            if (state === 'idle' && recordingPage?.data.recordingRequested) recordingPage.startRecording()
+          },
+          filePath => new Promise<void>((resolve, reject) => {
+            // Devtools returns virtual HTTP files that its filesystem cannot unlink.
+            if (isDevtools && filePath.startsWith('http://tmp/')) {
+              resolve()
+              return
+            }
+            wx.getFileSystemManager().unlink({ filePath, success: () => resolve(), fail: reject })
+          }))
+      }
+      this.setData({ recordingRequested: true })
+      pcmRecorder.start()
+    },
+    pauseRecording() {
+      this.setData({ recordingRequested: false })
+      pcmRecorder?.stop()
+    },
+    leaveMicrophone() {
+      if (recordingPage !== this) return
+      permissionEpoch++
+      recordingPage = undefined
+      this.setData({ permissionBusy: false, recordingRequested: false, pcmBytes: 0 })
+      pcmRecorder?.stop()
+    },
     setMicrophonePermission(microphonePermission: 'granted' | 'denied' | 'error') {
       this.setData({ microphonePermission, permissionBusy: false })
+      if (microphonePermission === 'granted') this.startRecording()
     },
     requestMicrophonePermission() {
       if (this.data.permissionBusy || this.data.microphonePermission === 'granted') return
       this.setData({ permissionBusy: true })
+      const epoch = permissionEpoch
+      const finish = (status: 'granted' | 'denied' | 'error') => {
+        if (epoch === permissionEpoch && recordingPage === this) this.setMicrophonePermission(status)
+      }
       wx.getSetting({
         success: result => {
+          if (epoch !== permissionEpoch || recordingPage !== this) return
           const allowed = result.authSetting['scope.record']
           if (allowed !== undefined) {
-            this.setMicrophonePermission(allowed ? 'granted' : 'denied')
+            finish(allowed ? 'granted' : 'denied')
             return
           }
           wx.authorize({
             scope: 'scope.record',
-            success: () => this.setMicrophonePermission('granted'),
+            success: () => finish('granted'),
             fail: () => wx.getSetting({
-              success: result => this.setMicrophonePermission(
+              success: result => finish(
                 result.authSetting['scope.record'] === false ? 'denied' : 'error'),
-              fail: () => this.setMicrophonePermission('error'),
+              fail: () => finish('error'),
             }),
           })
         },
-        fail: () => this.setMicrophonePermission('error'),
+        fail: () => finish('error'),
       })
     },
     openMicrophoneSettings() {
       if (this.data.permissionBusy) return
       this.setData({ permissionBusy: true })
+      const epoch = permissionEpoch
       wx.openSetting({
-        success: result => this.setMicrophonePermission(result.authSetting['scope.record'] ? 'granted' : 'denied'),
-        fail: () => this.setMicrophonePermission('error'),
+        success: result => {
+          if (epoch === permissionEpoch && recordingPage === this) {
+            this.setMicrophonePermission(result.authSetting['scope.record'] ? 'granted' : 'denied')
+          }
+        },
+        fail: () => {
+          if (epoch === permissionEpoch && recordingPage === this) this.setMicrophonePermission('error')
+        },
       })
     },
     stopPitchTrail() {

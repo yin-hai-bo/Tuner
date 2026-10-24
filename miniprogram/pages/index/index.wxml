@@ -11,10 +11,13 @@
     </label>
     <button wx:if="{{microphonePermission === 'denied'}}" class="microphone-button" disabled="{{permissionBusy}}" bindtap="openMicrophoneSettings">{{messages.openMicrophoneSettings}}</button>
     <button wx:elif="{{microphonePermission === 'error'}}" class="microphone-button" loading="{{permissionBusy}}" disabled="{{permissionBusy}}" bindtap="requestMicrophonePermission">{{messages.retryMicrophonePermission}}</button>
+    <button wx:elif="{{recordingState === 'starting' || recordingState === 'recording'}}" class="microphone-button" bindtap="pauseRecording">{{messages.pauseListening}}</button>
+    <button wx:elif="{{microphonePermission === 'granted' && (recordingState === 'idle' || recordingState === 'ended' || recordingState === 'interrupted')}}" class="microphone-button" bindtap="startRecording">{{messages.continueListening}}</button>
     <button wx:if="{{debugEnabled}}" class="debug-toggle" bindtap="toggleDebugPanel">{{messages.debugTitle}}</button>
   </view>
-  <text class="microphone-notice">{{microphonePermission === 'denied' ? messages.microphoneRequired : microphonePermission === 'error' ? messages.microphonePermissionError : messages.microphonePrivacy}}</text>
+  <text class="microphone-notice">{{microphonePermission === 'denied' ? messages.microphoneRequired : microphonePermission === 'error' ? messages.microphonePermissionError : recordingState === 'error' ? messages.recordingError : messages.microphonePrivacy}}</text>
   <view wx:if="{{debugEnabled && debugOpen}}" class="debug-panel">
+    <view>PCM {{pcmBytes}} B · {{recordingState}}</view>
     <picker range="{{debugStrings}}" value="{{debugIndex}}" bindchange="debugSelectString">
       <view>{{messages.string}} {{debugStrings[debugIndex]}} ▾</view>
     </picker>

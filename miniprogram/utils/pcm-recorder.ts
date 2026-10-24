@@ -28,6 +28,7 @@ export function createPcmRecorder(
     pendingStop = true
     try {
       if (tempFilePath) await removeFile(tempFilePath)
+      pendingStop = false
       update(next)
     } catch {
       update('error')

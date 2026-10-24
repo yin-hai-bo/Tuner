@@ -5,6 +5,7 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 import { createAutomaticStringConfirmation } from '../miniprogram/utils/automatic-string-confirmation.ts'
+import { createPcmRecorder } from '../miniprogram/utils/pcm-recorder.ts'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
 
 function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools', wxOverrides = {}) {
@@ -16,6 +17,12 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   let title
   const tabs = []
   const audios = []
+  const recordingEvents = {}, recordingStarts = [], deletedFiles = []
+  let recordingStops = 0
+  const recorder = { start: options => recordingStarts.push(options), stop: () => recordingStops++ }
+  for (const name of ['Start', 'FrameRecorded', 'Stop', 'Error', 'InterruptionBegin', 'InterruptionEnd']) {
+    recorder[`on${name}`] = callback => { recordingEvents[name] = callback }
+  }
   let now = 0, timerId = 0
   const timers = new Map()
   runInNewContext(source, {
@@ -24,11 +31,14 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
     clearInterval: id => timers.delete(id),
     getMessages, getPreferredLanguage,
     createAutomaticStringConfirmation,
+    createPcmRecorder,
     getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection,
     Component: value => { definition = value },
     wx: {
       createInnerAudioContext: () => { audios.push({}); return {} },
       getSetting: options => options.success({ authSetting: { 'scope.record': true } }),
+      getRecorderManager: () => recorder,
+      getFileSystemManager: () => ({ unlink: options => { deletedFiles.push(options.filePath); options.success() } }),
       getSystemInfoSync: () => ({ language: systemLanguage, platform }),
       getStorageSync: key => {
         if (unavailable) throw new Error('Storage unavailable')
@@ -53,7 +63,8 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   const hide = () => definition.pageLifetimes.hide.call(page)
   const detach = () => definition.lifetimes.detached.call(page)
   const tick = (elapsed = 100) => { now += elapsed; for (const callback of timers.values()) callback() }
-  return { page, show, hide, detach, tick, timers, getTitle: () => title, tabs, audios }
+  return { page, show, hide, detach, tick, timers, getTitle: () => title, tabs, audios,
+    recordingEvents, recordingStarts, deletedFiles, get recordingStops() { return recordingStops } }
 }
 
 function createPermissionPage() {
@@ -62,15 +73,101 @@ function createPermissionPage() {
   return { ...createPage(new Map(), false, 'en', 'index', 'devtools', overrides), requests }
 }
 
-test('entering home checks microphone permission and requests it once without recording', () => {
-  const { page, requests, show } = createPermissionPage()
+test('late permission callbacks cannot request authorization or record after leaving', () => {
+  const { page, requests, hide, show, recordingStarts } = createPermissionPage()
+  hide()
+  show()
+  requests.getSetting[0].success({ authSetting: {} })
+  assert.equal(requests.authorize.length, 0)
+  requests.getSetting[1].success({ authSetting: {} })
+  hide()
+  requests.authorize[0].success()
+  assert.equal(recordingStarts.length, 0)
+  assert.equal(page.data.permissionBusy, false)
+})
+
+test('home receives frames, stops on hide and waits for file cleanup before restarting', async () => {
+  const session = createPage(new Map(), false, 'en', 'index')
+  assert.equal(session.recordingStarts.length, 1)
+  session.recordingEvents.Start()
+  session.recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(4096) })
+  assert.equal(session.page.data.pcmBytes, 4096)
+  session.hide()
+  assert.equal(session.recordingStops, 1)
+  assert.equal(session.page.data.pcmBytes, 0)
+  session.recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(4096) })
+  assert.equal(session.page.data.pcmBytes, 0)
+  session.show()
+  assert.equal(session.recordingStarts.length, 1)
+  await session.recordingEvents.Stop({ tempFilePath: 'wxfile://temporary.pcm' })
+  assert.deepEqual(session.deletedFiles, ['wxfile://temporary.pcm'])
+  assert.equal(session.recordingStarts.length, 2)
+  session.detach()
+  assert.equal(session.recordingStops, 2)
+})
+
+test('pause, recording limit and interruption require an explicit continue action', async () => {
+  const { page, recordingEvents, recordingStarts } = createPage(new Map(), false, 'en', 'index')
+  recordingEvents.Start()
+  page.pauseRecording()
+  await recordingEvents.Stop({ tempFilePath: 'wxfile://paused.pcm' })
+  assert.equal(recordingStarts.length, 1)
+  page.startRecording()
+  recordingEvents.Start()
+  await recordingEvents.Stop({ tempFilePath: 'wxfile://limit.pcm' })
+  assert.equal(page.data.recordingState, 'ended')
+  assert.equal(recordingStarts.length, 2)
+  page.startRecording()
+  recordingEvents.Start()
+  recordingEvents.InterruptionBegin()
+  await recordingEvents.Stop({ tempFilePath: 'wxfile://interrupted.pcm' })
+  recordingEvents.InterruptionEnd()
+  assert.equal(page.data.recordingState, 'interrupted')
+  assert.equal(recordingStarts.length, 3)
+  page.startRecording()
+  assert.equal(recordingStarts.length, 4)
+})
+
+test('file cleanup failure reaches the page instead of silently restarting recording', async () => {
+  const { page, recordingEvents, recordingStarts } = createPage(new Map(), false, 'en', 'index', 'devtools', {
+    getFileSystemManager: () => ({ unlink: options => options.fail({ errMsg: 'unlink failed' }) }),
+  })
+  recordingEvents.Start()
+  await recordingEvents.Stop({ tempFilePath: 'wxfile://failed.pcm' })
+  assert.equal(page.data.recordingState, 'error')
+  assert.equal(page.data.recordingRequested, false)
+  assert.equal(recordingStarts.length, 1)
+})
+
+for (const platform of ['devtools', 'ios', 'android']) {
+  test(`developer tool temporary URLs do not break pause only on ${platform}`, async () => {
+    let unlinkCalls = 0
+    const tempFilePath = 'http://tmp/recording.durationTime=26335.PCM'
+    const { page, recordingEvents } = createPage(new Map(), false, 'en', 'index', platform, {
+      getFileSystemManager: () => ({ unlink: options => {
+        unlinkCalls++
+        options.fail({ errMsg: `unlink:fail permission denied, open ${tempFilePath}` })
+      } }),
+    })
+    recordingEvents.Start()
+    page.pauseRecording()
+    await recordingEvents.Stop({ tempFilePath })
+    assert.equal(page.data.recordingState, platform === 'devtools' ? 'idle' : 'error')
+    assert.equal(unlinkCalls, platform === 'devtools' ? 0 : 1)
+  })
+}
+
+test('entering home requests permission once and starts recording only after permission is granted', () => {
+  const { page, requests, show, recordingStarts } = createPermissionPage()
   assert.equal(requests.getSetting.length, 1)
+  assert.equal(recordingStarts.length, 0)
   page.requestMicrophonePermission()
   page.requestMicrophonePermission()
   assert.equal(requests.getSetting.length, 1)
   requests.getSetting[0].success({ authSetting: {} })
   assert.equal(requests.authorize[0].scope, 'scope.record')
   requests.authorize[0].success()
+  assert.equal(recordingStarts.length, 1)
   assert.equal(page.data.microphonePermission, 'granted')
   assert.equal(page.data.permissionBusy, false)
   page.requestMicrophonePermission()
@@ -96,17 +193,17 @@ for (const allowed of [true, false]) {
   })
 }
 
-test('home offers permission buttons only for denial or API errors', () => {
+test('home offers permission buttons for denial or API errors, and recording controls separately', () => {
   const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
   const buttons = [...template.matchAll(/<button\b[^>]*class="microphone-button"[^>]*>/g)]
-  assert.equal(buttons.length, 2)
+  assert.equal(buttons.length, 4)
   assert.match(buttons[0][0], /microphonePermission === 'denied'/)
   assert.match(buttons[1][0], /microphonePermission === 'error'/)
   assert.doesNotMatch(template, /startTuning|microphoneReady/)
 })
 
-test('denial offers settings, and returning from settings never starts recording', () => {
-  const { page, requests } = createPermissionPage()
+test('denial offers settings, and recording starts only when settings grant permission', () => {
+  const { page, requests, recordingStarts } = createPermissionPage()
   page.requestMicrophonePermission()
   requests.getSetting[0].success({ authSetting: {} })
   requests.authorize[0].fail()
@@ -120,6 +217,7 @@ test('denial offers settings, and returning from settings never starts recording
     requests.openSetting.at(-1).success({ authSetting: { 'scope.record': allowed } })
     assert.equal(page.data.microphonePermission, allowed ? 'granted' : 'denied')
     assert.equal(page.data.permissionBusy, false)
+    assert.equal(recordingStarts.length, allowed ? 1 : 0)
   }
 })
 
