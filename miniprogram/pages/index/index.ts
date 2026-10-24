@@ -66,9 +66,10 @@ Component({
       } catch {
         // Storage may be unavailable; continue with the system language.
       }
-      const system = wx.getSystemInfoSync()
-      const messages = getMessages(getPreferredLanguage(savedLanguage, system.language))
-      this.setData({ messages, debugEnabled: system.platform === 'devtools', microphonePermission: 'unknown' })
+      const { language } = wx.getAppBaseInfo()
+      const { platform } = wx.getDeviceInfo()
+      const messages = getMessages(getPreferredLanguage(savedLanguage, language))
+      this.setData({ messages, debugEnabled: platform === 'devtools', microphonePermission: 'unknown' })
       this.stopPitchTrail()
       trailTimer = setInterval(() => this.samplePitchTrail(), 100)
       this.updatePluckHint()

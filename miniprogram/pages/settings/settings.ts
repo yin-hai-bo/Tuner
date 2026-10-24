@@ -19,7 +19,7 @@ Component({
   },
   methods: {
     applyPreference(preference: string) {
-      const systemLanguage = wx.getSystemInfoSync().language
+      const systemLanguage = wx.getAppBaseInfo().language
       const messages = getMessages(getPreferredLanguage(preference, systemLanguage))
       this.setData({ preference, messages, followSystem: getMessages(systemLanguage).followSystem })
       wx.setNavigationBarTitle({ title: messages.settings })

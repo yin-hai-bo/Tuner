@@ -39,7 +39,9 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
       getSetting: options => options.success({ authSetting: { 'scope.record': true } }),
       getRecorderManager: () => recorder,
       getFileSystemManager: () => ({ unlink: options => { deletedFiles.push(options.filePath); options.success() } }),
-      getSystemInfoSync: () => ({ language: systemLanguage, platform }),
+      getSystemInfoSync: () => { throw new Error('Deprecated getSystemInfoSync must not be called') },
+      getAppBaseInfo: () => ({ language: systemLanguage }),
+      getDeviceInfo: () => ({ platform }),
       getStorageSync: key => {
         if (unavailable) throw new Error('Storage unavailable')
         return storage.get(key)
