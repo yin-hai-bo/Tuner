@@ -14,11 +14,25 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   let definition
   let title
   const tabs = []
+  const audioLog = [], audios = [], toasts = []
   runInNewContext(source, {
     getMessages, getPreferredLanguage,
     selectString, standardTuning, useAutomaticSelection,
     Component: value => { definition = value },
     wx: {
+      createInnerAudioContext: () => {
+        const audio = {
+          src: '',
+          play() { audioLog.push(`play:${this.src}`) },
+          stop() { audioLog.push('stop') },
+          destroy() { audioLog.push('destroy') },
+          onEnded(callback) { this.ended = callback },
+          onError(callback) { this.error = callback },
+        }
+        audios.push(audio)
+        return audio
+      },
+      showToast: options => { toasts.push(options.title) },
       getSystemInfoSync: () => ({ language: systemLanguage }),
       getStorageSync: key => {
         if (unavailable) throw new Error('Storage unavailable')
@@ -39,11 +53,57 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   }
   const show = () => definition.pageLifetimes.show.call(page)
   show()
-  return { page, show, getTitle: () => title, tabs }
+  const hide = () => definition.pageLifetimes.hide.call(page)
+  const detach = () => definition.lifetimes.detached.call(page)
+  return { page, show, hide, detach, getTitle: () => title, tabs, audioLog, audios, toasts }
 }
 
+test('tapping a peg replays from the start and switching strings replaces the previous sound', () => {
+  const { page, audioLog, audios } = createPage(new Map(), false, 'en', 'index')
+  assert.equal(audios.length, 0)
+  for (const number of [6, 6, 1]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+  }
+  assert.deepEqual(audioLog, [
+    'play:/assets/tones/string-6.wav', 'stop', 'destroy',
+    'play:/assets/tones/string-6.wav', 'stop', 'destroy', 'play:/assets/tones/string-1.wav',
+  ])
+  audios[0].ended()
+  audios[0].error()
+  assert.equal(audioLog.length, 7, 'Stale callbacks must not stop the newest sound')
+  for (const number of [undefined, '1', 0, 7]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+  }
+  assert.equal(audios.length, 3)
+})
+
+for (const action of ['hide', 'detach', 'ended', 'auto']) {
+  test(`${action} releases the reference sound`, () => {
+    const state = createPage(new Map(), false, 'en', 'index')
+    state.page.toggleAutomatic({ detail: { value: false } })
+    assert.equal(state.audios[0].src, '/assets/tones/string-6.wav')
+    if (action === 'auto') state.page.toggleAutomatic({ detail: { value: true } })
+    else if (action === 'ended') state.audios[0].ended()
+    else state[action]()
+    assert.deepEqual(state.audioLog, ['play:/assets/tones/string-6.wav', 'stop', 'destroy'])
+    state.hide()
+    assert.equal(state.audioLog.length, 3)
+  })
+}
+
+test('audio errors preserve selection, release the player and allow retry', () => {
+  const { page, audios, toasts, audioLog } = createPage(new Map(), false, 'zh_CN', 'index')
+  page.selectTuner({ currentTarget: { dataset: { number: 4 } } })
+  audios[0].error()
+  assert.equal(page.data.selection.target.number, 4)
+  assert.deepEqual(toasts, ['参考音播放失败，请重试'])
+  assert.deepEqual(audioLog.slice(-2), ['stop', 'destroy'])
+  page.selectTuner({ currentTarget: { dataset: { number: 4 } } })
+  assert.equal(audios.length, 2)
+})
+
 test('home connects all six tuning pegs and clears the target in auto mode', () => {
-  const { page } = createPage(new Map(), false, 'en', 'index')
+  const { page, audioLog } = createPage(new Map(), false, 'en', 'index')
   assert.equal(page.data.selection.mode, 'auto')
   assert.equal(page.data.selection.target, null)
   assert.deepEqual(page.data.leftTuners.map(peg => peg.number), [4, 5, 6])
@@ -51,6 +111,7 @@ test('home connects all six tuning pegs and clears the target in auto mode', () 
   for (const [number, note] of [[6, 'E'], [5, 'A'], [4, 'D'], [3, 'G'], [2, 'B'], [1, 'E']]) {
     page.selectTuner({ currentTarget: { dataset: { number } } })
     assert.deepEqual(page.data.selection, { mode: 'manual', target: { number, note } })
+    assert.equal(audioLog.at(-1), `play:/assets/tones/string-${number}.wav`)
   }
   page.toggleAutomatic({ detail: { value: true } })
   assert.deepEqual(page.data.selection, { mode: 'auto', target: null })

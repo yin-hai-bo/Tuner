@@ -12,6 +12,7 @@ const messages = {
     chooseString: '（点击弦钮选择琴弦将退出自动模式）',
     pluckString: '请拨动一根琴弦',
     pluckSelectedString: '请拨动第 {number} 弦 ({note})',
+    referenceUnavailable: '参考音播放失败，请重试',
   },
   en: {
     title: 'Tuner',
@@ -26,6 +27,7 @@ const messages = {
     chooseString: '(Selecting a string with a tuning peg exits auto mode)',
     pluckString: 'Pluck a single string',
     pluckSelectedString: 'Pluck string {number} ({note})',
+    referenceUnavailable: 'Could not play tone. Try again.',
   },
 }
 
