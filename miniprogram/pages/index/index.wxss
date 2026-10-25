@@ -101,7 +101,7 @@ page {
   margin-bottom: 160rpx;
 }
 
-.microphone-button { margin: 0; font-size: 24rpx; background: #00cba9; color: #101413; }
+.toolbar .microphone-button { margin: 0; font-size: 24rpx; background: #00cba9; color: #101413; }
 .microphone-notice {
   position: absolute;
   z-index: 1;
