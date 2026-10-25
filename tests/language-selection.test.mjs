@@ -255,7 +255,7 @@ test('automatic and manual recording share pitch detection while manual keeps it
     page.selectTuner({ currentTarget: { dataset: { number } } })
     recordingEvents.FrameRecorded({ frameBuffer: frame })
     assert.equal(page.data.pitchReading.target.number, number)
-    assert.ok(Math.abs(page.data.pitchDeviation - (number === 6 ? 2400 : 0)) <= 2)
+    assert.ok(Math.abs(page.data.pitchDeviation - (number === 6 ? 1200 : 0)) <= 1)
     assert.equal(page.data.automaticTarget, 0)
     assert.equal(page.data.pitchInputState, 'tone')
   }
@@ -312,7 +312,7 @@ test('brief silence does not count toward unfinished stable tuning', () => {
   tick(100)
   tone()
   assert.equal(page.data.pitchStable, false)
-  tick(499)
+  tick(249)
   tone()
   assert.equal(page.data.pitchStable, false)
   tick(1)
@@ -337,7 +337,7 @@ for (const action of ['selection', 'uncertain', 'interrupted', 'hide']) {
   })
 }
 
-test('live PCM shows the tuned check only after 500ms and resets on mode changes', () => {
+test('live PCM shows the tuned check only after 250ms and resets on mode changes', () => {
   const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
   page.toggleAutomatic({ detail: { value: false } })
   recordingEvents.Start()
@@ -346,7 +346,7 @@ test('live PCM shows the tuned check only after 500ms and resets on mode changes
   assert.equal(page.data.pitchInTune, true)
   assert.equal(page.data.pitchStable, false)
   assert.equal(page.data.pitchHintKey, 'holdPitch')
-  tick(499)
+  tick(249)
   recordingEvents.FrameRecorded({ frameBuffer: frame })
   assert.equal(page.data.pitchStable, false)
   tick(1)
@@ -357,12 +357,12 @@ test('live PCM shows the tuned check only after 500ms and resets on mode changes
   assert.equal(page.data.pitchStable, false)
 })
 
-test('automatic feedback is immediate but success still requires 500ms of stable tuning', () => {
+test('automatic feedback is immediate but success still requires 250ms of stable tuning', () => {
   const { page, tick, audios } = createPage(new Map(), false, 'en', 'index', 'android')
   const input = () => page.updateLiveReading(getStringFrequency(6), 'tone')
   input()
   assert.equal(page.data.automaticTarget, 6)
-  tick(499)
+  tick(249)
   input()
   assert.equal(page.data.pitchStable, false)
   tick(1)
@@ -380,7 +380,7 @@ for (const number of [6, 5, 4, 3, 2, 1]) {
     const frame = pcmTone(getStringFrequency(number) * 2 ** (-20 / 1200))
     recordingEvents.FrameRecorded({ frameBuffer: frame })
     assert.equal(page.data.automaticTarget, number)
-    assert.equal(page.data.pitchDeviation, -20)
+    assert.equal(page.data.pitchDeviation, -10)
     assert.ok(page.data.pitchOffset < 0)
     assert.equal(page.data.pitchHintKey, 'pitchLow')
     assert.equal(page.data.pitchTrail.length, 0)
@@ -395,7 +395,7 @@ test('manual live input locks the selected string and clears on interruption', (
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
   assert.equal(page.data.pitchReading.target.number, 6)
-  assert.equal(page.data.pitchDeviation, 500)
+  assert.equal(page.data.pitchDeviation, 250)
   assert.equal(page.data.pitchHintKey, 'pitchHigh')
   assert.equal(page.data.automaticTarget, 0)
   recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
@@ -732,7 +732,7 @@ for (const [first, other] of stringPairs) {
     for (let i = 0; i < 4; i++) {
       input(other)
       assert.equal(page.data.automaticTarget, first)
-      assert.equal(page.data.pitchDeviation, 10, 'Do not reinterpret another string as a huge tuning error')
+      assert.equal(page.data.pitchDeviation, 5, 'Do not reinterpret another string as a huge tuning error')
       input(first)
     }
     input(other)
@@ -858,7 +858,7 @@ test('live success plays once, ignores speaker input and resumes with fresh PCM'
   recordingEvents.Start()
   const input = cents => recordingEvents.FrameRecorded({ frameBuffer: pcmTone(getStringFrequency(6) * 2 ** (cents / 1200)) })
   input(0)
-  tick(499)
+  tick(249)
   input(0)
   assert.equal(audios.length, 0)
   tick(1)
@@ -916,36 +916,60 @@ for (const action of ['hide', 'detach', 'interrupted', 'selection', 'automatic',
   })
 }
 
-test('live readings drive all six strings and signed offsets without premature success audio', () => {
+test('live readings drive all six strings and two-cent display levels without premature success audio', () => {
   const { page, audios } = createPage(new Map(), false, 'zh_CN', 'index')
   for (const { number } of standardTuning) {
     page.clearPitchReading()
-    for (const value of [-100, -5, 0, 5, 100]) {
+    for (const value of [-100, -6, 0, 6, 100]) {
       inputTone(page, number, value)
       assert.equal(page.data.pitchReading.target.number, number)
-      assert.equal(page.data.pitchDeviation || 0, value)
+      assert.equal(page.data.pitchDeviation || 0, value / 2)
       assert.equal(page.data.automaticTarget, number)
-      assert.ok(Math.abs(page.data.pitchOffset - value * .4) < .001)
+      assert.ok(Math.abs(page.data.pitchOffset - value / 2 * .4) < .001)
       assert.equal(page.data.pitchHintKey, value < 0 ? 'pitchLow' : value > 0 ? 'pitchHigh' : 'holdPitch')
     }
   }
   assert.equal(audios.length, 0)
 })
 
-test('deviations within two cents use a white outline and green-fill state, including exact boundaries', () => {
+test('numbers and marker positions group rounded cents in symmetric pairs around zero', () => {
+  const { page } = createPage(new Map(), false, 'en', 'index')
+  for (const [value, expected] of [[0, 0], [.49, 0], [.5, 1], [1, 1], [2, 1], [2.49, 1], [2.5, 2], [3, 2], [4, 2], [5, 3], [6, 3], [201, 101]]) {
+    for (const direction of [-1, 1]) {
+      inputTone(page, 6, value * direction)
+      const displayed = expected === 0 ? 0 : expected * direction
+      assert.equal(page.data.pitchDeviation, displayed)
+      assert.equal(page.data.pitchOffset, Math.max(-40, Math.min(40, displayed * .4)))
+    }
+  }
+})
+
+for (const cents of [-3.2, -3, -2.8, 2.8, 3, 3.2]) {
+  test(`display quantization preserves the raw tuning decision at ${cents} cents`, () => {
+    const { page, tick, audios } = createPage(new Map(), false, 'en', 'index')
+    inputTone(page, 6, cents)
+    assert.equal(page.data.pitchDeviation, Math.sign(cents) * 2)
+    tick(250)
+    inputTone(page, 6, cents)
+    assert.equal(page.data.pitchStable, Math.abs(cents) <= 3)
+    assert.equal(audios.length, Math.abs(cents) <= 3 ? 1 : 0)
+  })
+}
+
+test('deviations within three cents use a white outline and green-fill state, including exact boundaries', () => {
   const { page, tick, audios } = createPage(new Map(), false, 'zh_CN', 'index')
   for (let index = 0; index < 6; index++) {
     page.clearPitchReading()
-    for (const value of [-2, -1, 0, 1, 2]) {
+    for (const [sample, value] of [-3, -1, 0, 1, 3].entries()) {
       inputTone(page, 6 - index, value)
       assert.equal(page.data.pitchInTune, true)
       assert.equal(page.data.pitchMarkerColor, '#f2f5f3')
-      assert.equal(page.data.pitchHintKey, 'holdPitch')
+      assert.equal(page.data.pitchHintKey, sample >= 3 ? 'inTune' : 'holdPitch')
       tick()
       audios.at(-1)?.ended()
       assert.equal(page.data.pitchTrail.at(-1).color, '#16834b')
     }
-    for (const value of [-2.01, 2.01]) {
+    for (const value of [-3.01, 3.01]) {
       inputTone(page, 6 - index, value)
       assert.equal(page.data.pitchInTune, false)
       tick()
@@ -959,7 +983,7 @@ test('marker position and redness increase symmetrically with the deviation magn
   inputTone(page)
   tick(300)
   let previousGreen = 256, previousOffset = 0
-  for (const value of [3, 5, 20, 50, 100]) {
+  for (const value of [4, 6, 20, 50, 100]) {
     inputTone(page, 6, value)
     const color = page.data.pitchMarkerColor
     const green = Number(color.match(/rgb\(244, (\d+),/)[1])

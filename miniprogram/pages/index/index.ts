@@ -279,23 +279,25 @@ Component({
         return
       }
       pendingAutoString = null
-      const cents = reading ? Math.round(reading.cents) : 0
       const distance = reading ? Math.abs(reading.cents) : 0
-      // Allow only negligible floating-point error at the exact 2-cent boundary.
-      const pitchInTune = reading !== null && distance <= 2 + 1e-7
+      // Quantize only the display; tuning decisions keep the measured cents.
+      const displayDistance = Math.ceil(Math.round(distance + 1e-7) / 2)
+      const cents = reading && displayDistance !== 0 ? Math.sign(reading.cents) * displayDistance : 0
+      // Allow only negligible floating-point error at the exact 3-cent boundary.
+      const pitchInTune = reading !== null && distance <= 3 + 1e-7
       const stable = confirmStableTuning(reading ? reading.target.number : null, reading ? reading.cents : 0, now)
       const pitchStable = stable || (holding && this.data.pitchStable && pitchInTune &&
         this.data.pitchReading?.target.number === reading?.target.number)
       const success = confirmSuccess.update(reading?.target.number ?? null, reading?.cents ?? 0, stable)
       lastReadingAt = reading ? now : null
-      const redness = Math.max(0, Math.min(1, (distance - 2) / 98))
+      const redness = Math.max(0, Math.min(1, (distance - 3) / 97))
       const pitchMarkerColor = !reading && state === 'uncertain' ? '#7b8580' : !reading || pitchInTune ? '#f2f5f3'
         : `rgb(244, ${Math.round(200 - 130 * redness)}, ${Math.round(78 - 8 * redness)})`
       const pitchHintKey = !reading ? (state === 'uncertain' ? 'unreliableInput' : 'pluckString')
         : pitchStable ? 'inTune' : pitchInTune ? 'holdPitch' : reading.cents < 0 ? 'pitchLow' : 'pitchHigh'
       this.setData({ pitchInputState: state,
         pitchReading: reading, pitchDeviation: cents,
-        pitchOffset: reading ? Math.max(-40, Math.min(40, reading.cents * .4)) : 0,
+        pitchOffset: Math.max(-40, Math.min(40, cents * .4)),
         automaticTarget: reading && selection.mode === 'auto' ? reading.target.number : 0,
         pitchHintKey, pitchInTune, pitchMarkerColor, pitchStable,
         animateSuccess: pitchStable && (success || this.data.animateSuccess) })
