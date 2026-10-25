@@ -441,6 +441,18 @@ for (const language of ['zh_CN', 'en']) {
   }
 }
 
+test('privacy notice follows the target hint while permission and recording alerts stay at the top', () => {
+  const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
+  assert.equal((template.match(/messages\.microphonePrivacy/g) || []).length, 1)
+  assert.ok(template.indexOf('class="privacy-notice"') > template.indexOf('{{messages.chooseString}}'))
+  const alert = template.match(/<text\b[^>]*class="microphone-notice"[^>]*>/)[0]
+  assert.match(alert, /wx:if=/)
+  assert.match(alert, /microphonePermission === 'denied'/)
+  assert.match(alert, /microphonePermission === 'error'/)
+  assert.match(alert, /recordingState === 'error'/)
+  assert.match(alert, /listeningStopped/)
+})
+
 test('stopped listening uses its status text and a grey marker without asking for a pluck', () => {
   const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
   assert.match(template, /messages\[recordingHintKey\]/)

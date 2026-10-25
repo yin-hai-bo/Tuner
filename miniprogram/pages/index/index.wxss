@@ -154,6 +154,16 @@ page {
   font-size: 24rpx;
   text-align: center;
 }
+.privacy-notice {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  margin-top: 12rpx;
+  color: #78817c;
+  font-size: 20rpx;
+  line-height: 30rpx;
+  text-align: center;
+}
 
 .headstock {
   position: relative;
