@@ -1,6 +1,6 @@
 <import src="../../templates/usage-notice.wxml" />
 <view class="tuner">
-  <view class="pitch-grid {{debugInTune ? 'in-tune' : ''}}" aria-hidden="true">
+  <view class="pitch-grid {{pitchInTune ? 'in-tune' : ''}}" aria-hidden="true">
     <view class="pitch-trail">
       <view wx:for="{{pitchTrail}}" wx:key="id" class="pitch-trail-dot" style="left: {{50 + item.offset}}%; background: {{item.color}};"></view>
     </view>
@@ -10,59 +10,41 @@
       <text>{{messages.automatic}}</text>
       <switch checked="{{selection.mode === 'auto'}}" color="#00cba9" bindchange="toggleAutomatic" aria-label="{{messages.automatic}}" />
     </label>
-    <button wx:if="{{debugEnabled}}" class="debug-toggle" bindtap="toggleDebugPanel">{{messages.debugTitle}}</button>
     <button wx:if="{{microphonePermission === 'denied'}}" class="microphone-button" disabled="{{permissionBusy}}" bindtap="openMicrophoneSettings">{{messages.openMicrophoneSettings}}</button>
     <button wx:elif="{{microphonePermission === 'error'}}" class="microphone-button" loading="{{permissionBusy}}" disabled="{{permissionBusy}}" bindtap="requestMicrophonePermission">{{messages.retryMicrophonePermission}}</button>
     <button wx:elif="{{microphonePermission === 'granted' && listeningStopped}}" class="microphone-button" bindtap="startRecording">{{recordingState === 'error' || recordingState === 'cleanup-error' ? messages.retryMicrophonePermission : messages.continueListening}}</button>
   </view>
   <text wx:if="{{microphonePermission === 'denied' || microphonePermission === 'error' || listeningStopped}}" class="microphone-notice">{{microphonePermission === 'denied' ? messages.microphoneRequired : microphonePermission === 'error' ? messages.microphonePermissionError : messages[recordingHintKey]}}</text>
-  <view wx:if="{{debugEnabled && debugOpen}}" class="debug-panel">
-    <view>PCM {{pcmBytes}} B · {{recordingState}}</view>
-    <view>PCM {{messages.debugFrequency}}: {{liveFrequency || '—'}} Hz</view>
-    <picker range="{{debugStrings}}" value="{{debugIndex}}" bindchange="debugSelectString">
-      <view>{{messages.string}} {{debugStrings[debugIndex]}} ▾</view>
-    </picker>
-    <text>{{messages.debugCents}}</text>
-    <slider min="-100" max="100" step="1" value="{{debugCents}}" show-value activeColor="#00cba9" bindchanging="debugChangeCents" bindchange="debugChangeCents" />
-    <view class="debug-actions">
-      <button data-state="tone" bindtap="debugSetState">{{messages.debugTone}}</button>
-      <button data-state="silent" bindtap="debugSetState">{{messages.debugSilent}}</button>
-      <button data-state="uncertain" bindtap="debugSetState">{{messages.debugUncertain}}</button>
-    </view>
-    <view wx:if="{{debugReading}}">{{messages.debugFrequency}} {{debugFrequency}} Hz · {{messages.debugCandidate}} {{debugReading.target.number}}-{{debugReading.target.note}} · {{debugDeviation}} cents</view>
-    <view wx:elif="{{debugState === 'tone'}}">{{messages.pluckString}}</view>
-    <view wx:else>{{debugState === 'uncertain' ? messages.debugUncertain : messages.debugSilent}}</view>
-  </view>
   <view class="pitch-feedback">
-    <view class="pitch-marker {{debugInTune ? 'in-tune' : ''}} {{!debugReading && debugState !== 'uncertain' ? 'waiting' : ''}}" style="left: {{debugReading ? 50 + debugOffset : 50}}%; color: {{listeningStopped ? '#7b8580' : debugMarkerColor}};">
+    <view class="pitch-marker {{pitchInTune ? 'in-tune' : ''}} {{!pitchReading && pitchInputState !== 'uncertain' ? 'waiting' : ''}}" style="left: {{pitchReading ? 50 + pitchOffset : 50}}%; color: {{listeningStopped ? '#7b8580' : pitchMarkerColor}};">
       <view wx:if="{{pitchStable}}" class="pitch-check {{animateSuccess ? 'animate-success' : ''}}" aria-label="{{messages.inTune}}">
         <view class="check-short"></view>
         <view class="check-long"></view>
       </view>
-      <text wx:elif="{{debugReading}}" class="pitch-value">{{debugDeviation > 0 ? '+' : ''}}{{debugDeviation}}</text>
+      <text wx:elif="{{pitchReading}}" class="pitch-value">{{pitchDeviation > 0 ? '+' : ''}}{{pitchDeviation}}</text>
     </view>
-    <text class="pitch-hint">{{debugReading || debugState === 'uncertain' ? messages[debugHintKey] : listeningStopped ? '' : pluckHint}}</text>
+    <text class="pitch-hint">{{pitchReading || pitchInputState === 'uncertain' ? messages[pitchHintKey] : listeningStopped ? '' : pluckHint}}</text>
   </view>
   <view class="headstock">
     <image class="headstock-image" src="/assets/guitar-headstock.svg" mode="aspectFit" aria-hidden="true"></image>
-    <view wx:if="{{debugReading}}" class="string-highlight detected-string" aria-hidden="true">
-      <image class="headstock-image" src="/assets/string-highlights/string-{{debugReading.target.number}}.svg" mode="aspectFit"></image>
+    <view wx:if="{{pitchReading}}" class="string-highlight detected-string" aria-hidden="true">
+      <image class="headstock-image" src="/assets/string-highlights/string-{{pitchReading.target.number}}.svg" mode="aspectFit"></image>
     </view>
     <view class="tuners left">
-      <view wx:for="{{leftTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}} {{debugAutoTarget === item.number ? 'detected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
+      <view wx:for="{{leftTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}} {{automaticTarget === item.number ? 'detected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
         <image class="tuning-peg-highlight" src="/assets/tuning-peg-highlight.svg" mode="scaleToFill" aria-hidden="true"></image>
-        <text wx:if="{{(selection.target && selection.target.number === item.number) || (debugAutoTarget === item.number)}}">{{item.number}} · {{item.note}}</text>
+        <text wx:if="{{(selection.target && selection.target.number === item.number) || (automaticTarget === item.number)}}">{{item.number}} · {{item.note}}</text>
       </view>
     </view>
     <view class="tuners right">
-      <view wx:for="{{rightTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}} {{debugAutoTarget === item.number ? 'detected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
+      <view wx:for="{{rightTuners}}" wx:key="number" class="tuning-peg {{selection.target && selection.target.number === item.number ? 'selected' : ''}} {{automaticTarget === item.number ? 'detected' : ''}}" style="top: {{(161 + index * 120) / 720 * 100}}%;" data-number="{{item.number}}" bindtap="selectTuner" aria-role="button" aria-label="{{messages.string}} {{item.number}} {{item.note}}">
         <image class="tuning-peg-highlight" src="/assets/tuning-peg-highlight.svg" mode="scaleToFill" aria-hidden="true"></image>
-        <text wx:if="{{(selection.target && selection.target.number === item.number) || (debugAutoTarget === item.number)}}">{{item.number}} · {{item.note}}</text>
+        <text wx:if="{{(selection.target && selection.target.number === item.number) || (automaticTarget === item.number)}}">{{item.number}} · {{item.note}}</text>
       </view>
     </view>
   </view>
   <text class="target" wx:if="{{selection.target}}">{{messages.string}} {{selection.target.number}} · {{selection.target.note}}</text>
-  <text class="target" wx:elif="{{debugReading}}">{{messages.string}} {{debugReading.target.number}} · {{debugReading.target.note}}</text>
+  <text class="target" wx:elif="{{pitchReading}}">{{messages.string}} {{pitchReading.target.number}} · {{pitchReading.target.note}}</text>
   <text class="target selection-hint" wx:else>{{messages.chooseString}}</text>
   <text class="privacy-notice">{{messages.microphonePrivacy}}</text>
 </view>

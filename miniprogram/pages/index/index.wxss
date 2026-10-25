@@ -101,7 +101,6 @@ page {
   margin-bottom: 160rpx;
 }
 
-.debug-toggle { margin: 0; font-size: 22rpx; background: #202925; color: #9aa7a1; }
 .microphone-button { margin: 0; font-size: 24rpx; background: #00cba9; color: #101413; }
 .microphone-notice {
   position: absolute;
@@ -114,25 +113,6 @@ page {
   font-size: 22rpx;
   line-height: 32rpx;
 }
-.debug-panel {
-  position: fixed;
-  z-index: 10;
-  left: 16rpx;
-  right: 16rpx;
-  bottom: 16rpx;
-  box-sizing: border-box;
-  max-height: 36vh;
-  overflow-y: auto;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  background: #202925;
-  box-shadow: 0 -8rpx 32rpx rgba(0, 0, 0, .35);
-  font-size: 24rpx;
-  line-height: 40rpx;
-}
-.debug-actions { display: flex; gap: 8rpx; margin-bottom: 16rpx; }
-.debug-actions button { margin: 0; padding: 0 12rpx; font-size: 22rpx; }
-
 .auto-control {
   margin-right: auto;
   display: flex;

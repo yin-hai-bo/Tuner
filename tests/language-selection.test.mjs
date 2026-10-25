@@ -198,12 +198,12 @@ test('home receives frames, stops on hide and waits for file cleanup before rest
   assert.equal(session.recordingStarts.length, 1)
   session.recordingEvents.Start()
   session.recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(4096) })
-  assert.equal(session.page.data.pcmBytes, 4096)
+  assert.equal(session.page.data.pitchReading, null)
   session.hide()
   assert.equal(session.recordingStops, 1)
-  assert.equal(session.page.data.pcmBytes, 0)
+  assert.equal(session.page.data.pitchReading, null)
   session.recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(4096) })
-  assert.equal(session.page.data.pcmBytes, 0)
+  assert.equal(session.page.data.pitchReading, null)
   session.show()
   assert.equal(session.recordingStarts.length, 1)
   await session.recordingEvents.Stop({ tempFilePath: 'wxfile://temporary.pcm' })
@@ -220,15 +220,19 @@ test('live PCM immediately identifies its string and clears on exit', () => {
   for (let i = 0; i < 4096; i++) view.setInt16(i * 2, Math.round(20000 * Math.sin(2 * Math.PI * 110 * i / 16000)), true)
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: pcm.slice(0, 4097) })
-  assert.equal(page.data.liveFrequency, '')
+  assert.equal(page.data.pitchReading, null)
   recordingEvents.FrameRecorded({ frameBuffer: pcm.slice(4097) })
-  assert.ok(Math.abs(Number(page.data.liveFrequency) - 110) < .1)
-  assert.equal(page.data.debugReading.target.number, 5)
+  assert.equal(page.data.pitchReading.target.number, 5)
+  assert.equal(page.data.pitchReading.target.number, 5)
   hide()
-  assert.equal(page.data.liveFrequency, '')
+  assert.equal(page.data.pitchReading, null)
   recordingEvents.FrameRecorded({ frameBuffer: pcm })
-  assert.equal(page.data.liveFrequency, '')
+  assert.equal(page.data.pitchReading, null)
 })
+
+function inputTone(page, number = 6, cents = 0) {
+  page.updateLiveReading(getStringFrequency(number) * 2 ** (cents / 1200), 'tone')
+}
 
 function pcmTone(frequency) {
   const frame = new ArrayBuffer(8192)
@@ -245,16 +249,15 @@ test('automatic and manual recording share pitch detection while manual keeps it
     (.08 * Math.sin(2 * Math.PI * low * i / 16000) + .64 * Math.sin(2 * Math.PI * high * i / 16000))), true)
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: frame })
-  assert.equal(page.data.debugAutoTarget, 1)
-  assert.ok(Math.abs(1200 * Math.log2(Number(page.data.liveFrequency) / high)) < 2)
+  assert.equal(page.data.automaticTarget, 1)
+  assert.ok(Math.abs(page.data.pitchReading.cents) < 2)
   for (const number of [6, 1]) {
     page.selectTuner({ currentTarget: { dataset: { number } } })
     recordingEvents.FrameRecorded({ frameBuffer: frame })
-    assert.equal(page.data.debugReading.target.number, number)
-    assert.ok(Math.abs(1200 * Math.log2(Number(page.data.liveFrequency) / high)) < 2)
-    assert.ok(Math.abs(page.data.debugDeviation - (number === 6 ? 2400 : 0)) <= 2)
-    assert.equal(page.data.debugAutoTarget, 0)
-    assert.equal(page.data.debugState, 'tone')
+    assert.equal(page.data.pitchReading.target.number, number)
+    assert.ok(Math.abs(page.data.pitchDeviation - (number === 6 ? 2400 : 0)) <= 2)
+    assert.equal(page.data.automaticTarget, 0)
+    assert.equal(page.data.pitchInputState, 'tone')
   }
 })
 
@@ -263,21 +266,21 @@ test('silent PCM preserves the last result for 999ms and clears at 1000ms withou
   page.toggleAutomatic({ detail: { value: false } })
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: pcmTone(getStringFrequency(6) * 2 ** (20 / 1200)) })
-  const reading = page.data.debugReading
-  const offset = page.data.debugOffset
+  const reading = page.data.pitchReading
+  const offset = page.data.pitchOffset
   tick(100)
   recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
   const trailLength = page.data.pitchTrail.length
   tick(899)
   recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
-  assert.equal(page.data.debugReading, reading)
-  assert.equal(page.data.debugOffset, offset)
-  assert.equal(page.data.debugHintKey, 'pitchHigh')
+  assert.equal(page.data.pitchReading, reading)
+  assert.equal(page.data.pitchOffset, offset)
+  assert.equal(page.data.pitchHintKey, 'pitchHigh')
   assert.equal(page.data.pitchTrail.length, trailLength, 'Held readings must not fabricate new measurements')
   tick(1)
-  assert.equal(page.data.debugReading, null)
-  assert.equal(page.data.debugOffset, 0)
-  assert.equal(page.data.debugMarkerColor, '#f2f5f3')
+  assert.equal(page.data.pitchReading, null)
+  assert.equal(page.data.pitchOffset, 0)
+  assert.equal(page.data.pitchMarkerColor, '#f2f5f3')
   assert.equal(page.data.selection.target.number, 6)
 })
 
@@ -292,11 +295,11 @@ test('a confirmed automatic target and tuned check survive brief silence on the 
   assert.equal(page.data.pitchStable, true)
   page.updateLiveReading(null, 'silent')
   tick(100)
-  assert.equal(page.data.debugAutoTarget, 5)
+  assert.equal(page.data.automaticTarget, 5)
   assert.equal(page.data.pitchStable, true)
   tone()
   assert.equal(page.data.pitchStable, true)
-  assert.equal(page.data.debugHintKey, 'inTune')
+  assert.equal(page.data.pitchHintKey, 'inTune')
 })
 
 test('brief silence does not count toward unfinished stable tuning', () => {
@@ -324,12 +327,12 @@ for (const action of ['selection', 'uncertain', 'interrupted', 'hide']) {
     recordingEvents.Start()
     page.updateLiveReading(getStringFrequency(6), 'tone')
     page.updateLiveReading(null, 'silent')
-    assert.notEqual(page.data.debugReading, null)
+    assert.notEqual(page.data.pitchReading, null)
     if (action === 'selection') page.selectTuner({ currentTarget: { dataset: { number: 5 } } })
     if (action === 'uncertain') page.updateLiveReading(null, 'uncertain')
     if (action === 'interrupted') recordingEvents.InterruptionBegin()
     if (action === 'hide') hide()
-    assert.equal(page.data.debugReading, null)
+    assert.equal(page.data.pitchReading, null)
     assert.equal(page.data.pitchStable, false)
   })
 }
@@ -340,16 +343,16 @@ test('live PCM shows the tuned check only after 500ms and resets on mode changes
   recordingEvents.Start()
   const frame = pcmTone(getStringFrequency(6))
   recordingEvents.FrameRecorded({ frameBuffer: frame })
-  assert.equal(page.data.debugInTune, true)
+  assert.equal(page.data.pitchInTune, true)
   assert.equal(page.data.pitchStable, false)
-  assert.equal(page.data.debugHintKey, 'holdPitch')
+  assert.equal(page.data.pitchHintKey, 'holdPitch')
   tick(499)
   recordingEvents.FrameRecorded({ frameBuffer: frame })
   assert.equal(page.data.pitchStable, false)
   tick(1)
   recordingEvents.FrameRecorded({ frameBuffer: frame })
   assert.equal(page.data.pitchStable, true)
-  assert.equal(page.data.debugHintKey, 'inTune')
+  assert.equal(page.data.pitchHintKey, 'inTune')
   page.toggleAutomatic({ detail: { value: true } })
   assert.equal(page.data.pitchStable, false)
 })
@@ -358,7 +361,7 @@ test('automatic feedback is immediate but success still requires 500ms of stable
   const { page, tick, audios } = createPage(new Map(), false, 'en', 'index', 'android')
   const input = () => page.updateLiveReading(getStringFrequency(6), 'tone')
   input()
-  assert.equal(page.data.debugAutoTarget, 6)
+  assert.equal(page.data.automaticTarget, 6)
   tick(499)
   input()
   assert.equal(page.data.pitchStable, false)
@@ -371,16 +374,15 @@ test('automatic feedback is immediate but success still requires 500ms of stable
 })
 
 for (const number of [6, 5, 4, 3, 2, 1]) {
-  test(`live PCM string ${number} drives feedback immediately with the debug panel closed`, () => {
+  test(`live PCM string ${number} drives feedback immediately without a simulation panel`, () => {
     const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
     recordingEvents.Start()
     const frame = pcmTone(getStringFrequency(number) * 2 ** (-20 / 1200))
     recordingEvents.FrameRecorded({ frameBuffer: frame })
-    assert.equal(page.data.debugOpen, false)
-    assert.equal(page.data.debugAutoTarget, number)
-    assert.equal(page.data.debugDeviation, -20)
-    assert.ok(page.data.debugOffset < 0)
-    assert.equal(page.data.debugHintKey, 'pitchLow')
+    assert.equal(page.data.automaticTarget, number)
+    assert.equal(page.data.pitchDeviation, -20)
+    assert.ok(page.data.pitchOffset < 0)
+    assert.equal(page.data.pitchHintKey, 'pitchLow')
     assert.equal(page.data.pitchTrail.length, 0)
     tick(100)
     assert.equal(page.data.pitchTrail.length, 1)
@@ -392,39 +394,31 @@ test('manual live input locks the selected string and clears on interruption', (
   page.selectTuner({ currentTarget: { dataset: { number: 6 } } })
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
-  assert.equal(page.data.debugReading.target.number, 6)
-  assert.equal(page.data.debugDeviation, 500)
-  assert.equal(page.data.debugHintKey, 'pitchHigh')
-  assert.equal(page.data.debugAutoTarget, 0)
+  assert.equal(page.data.pitchReading.target.number, 6)
+  assert.equal(page.data.pitchDeviation, 500)
+  assert.equal(page.data.pitchHintKey, 'pitchHigh')
+  assert.equal(page.data.automaticTarget, 0)
   recordingEvents.FrameRecorded({ frameBuffer: new ArrayBuffer(8192) })
-  assert.equal(page.data.debugReading.target.number, 6, 'Brief silence preserves the last reading')
-  assert.equal(page.data.debugState, 'silent')
+  assert.equal(page.data.pitchReading.target.number, 6, 'Brief silence preserves the last reading')
+  assert.equal(page.data.pitchInputState, 'silent')
   page.updateLiveReading(null, 'uncertain')
-  assert.equal(page.data.debugMarkerColor, '#7b8580')
-  assert.equal(page.data.debugHintKey, 'unreliableInput')
+  assert.equal(page.data.pitchMarkerColor, '#7b8580')
+  assert.equal(page.data.pitchHintKey, 'unreliableInput')
   recordingEvents.InterruptionBegin()
-  assert.equal(page.data.debugReading, null)
-  assert.equal(page.data.debugMarkerColor, '#f2f5f3')
+  assert.equal(page.data.pitchReading, null)
+  assert.equal(page.data.pitchMarkerColor, '#f2f5f3')
   assert.equal(page.data.selection.target.number, 6)
 })
 
-test('missing live frames clear feedback, and simulation remains isolated from microphone input', () => {
+test('missing live frames clear feedback and fresh microphone input restores it', () => {
   const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index')
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
   tick(1000)
-  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.pitchReading, null)
   recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
-  assert.equal(page.data.debugReading.target.number, 5)
+  assert.equal(page.data.pitchReading.target.number, 5)
   assert.equal(page.data.pitchStable, false)
-  page.toggleDebugPanel()
-  page.debugChangeCents({ detail: { value: 20 } })
-  tick(300)
-  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
-  assert.equal(page.data.debugReading.target.number, 6)
-  assert.equal(page.data.debugDeviation, 20)
-  page.toggleDebugPanel()
-  assert.equal(page.data.debugReading, null)
 })
 
 for (const language of ['zh_CN', 'en']) {
@@ -440,7 +434,7 @@ for (const language of ['zh_CN', 'en']) {
       assert.equal(page.data.listeningStopped, true)
       assert.equal(page.data.recordingHintKey, reason === 'ended' ? 'recordingEnded' : 'recordingInterrupted')
       assert.match(page.data.messages[page.data.recordingHintKey], language === 'zh_CN' ? /点击继续/ : /Tap Continue/)
-      assert.equal(page.data.debugReading, null)
+      assert.equal(page.data.pitchReading, null)
       assert.equal(page.data.pitchStable, false)
       assert.equal(page.data.selection.target.number, 5)
       assert.equal(recordingStarts.length, 1)
@@ -449,7 +443,7 @@ for (const language of ['zh_CN', 'en']) {
       assert.equal(page.data.listeningStopped, false)
       assert.equal(page.data.recordingHintKey, 'microphonePrivacy')
       assert.equal(page.data.selection.target.number, 5)
-      assert.equal(page.data.debugReading, null)
+      assert.equal(page.data.pitchReading, null)
       assert.equal(recordingStarts.length, 2)
     })
   }
@@ -469,7 +463,7 @@ test('privacy notice follows the target hint while permission and recording aler
 test('stopped listening uses its status text and a grey marker without asking for a pluck', () => {
   const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
   assert.match(template, /messages\[recordingHintKey\]/)
-  assert.match(template, /color: \{\{listeningStopped \? '#7b8580' : debugMarkerColor\}\}/)
+  assert.match(template, /color: \{\{listeningStopped \? '#7b8580' : pitchMarkerColor\}\}/)
   assert.match(template, /listeningStopped \? '' : pluckHint/)
 })
 
@@ -478,9 +472,9 @@ test('recording waits for a complete pitch window without exposing temporary dev
   recordingEvents.Start()
   const frame = pcmTone(110)
   recordingEvents.FrameRecorded({ frameBuffer: frame.slice(0, 6144) })
-  assert.equal(page.data.liveFrequency, '')
+  assert.equal(page.data.pitchReading, null)
   recordingEvents.FrameRecorded({ frameBuffer: frame.slice(6144) })
-  assert.ok(Math.abs(Number(page.data.liveFrequency) - 110) < .1)
+  assert.equal(page.data.pitchReading.target.number, 5)
   for (const key of ['pcmDiagnostics', 'pcmWindows', 'pcmInputState']) assert.equal(key in page.data, false)
 })
 
@@ -540,7 +534,7 @@ test('WeChat-managed PCM temporary files do not block listening when unlink is f
   assert.equal(recordingStarts.length, 2)
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
-  assert.equal(page.data.debugReading.target.number, 5)
+  assert.equal(page.data.pitchReading.target.number, 5)
   assert.equal(unlinkCalls, 0)
 })
 
@@ -585,7 +579,7 @@ for (const language of ['zh_CN', 'en']) {
     assert.equal(recordingStarts.length, 3)
     assert.equal(page.data.listeningStopped, false)
     assert.equal(page.data.selection.target.number, 5)
-    assert.equal(page.data.debugReading.target.number, 5)
+    assert.equal(page.data.pitchReading.target.number, 5)
     const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
     assert.match(template, /microphonePermission === 'granted' && listeningStopped/)
     assert.match(template, /recordingState === 'cleanup-error' \? messages.retryMicrophonePermission/)
@@ -636,8 +630,7 @@ test('home offers permission buttons for denial or API errors, and recording con
   assert.match(buttons[1][0], /microphonePermission === 'error'/)
   assert.doesNotMatch(template, /startTuning|microphoneReady/)
   assert.doesNotMatch(template, /pauseRecording|pauseListening|recordingState === 'idle'/)
-  const debugButton = template.match(/<button\b[^>]*class="debug-toggle"[^>]*>/)[0]
-  assert.match(debugButton, /wx:if="\{\{debugEnabled\}\}"/)
+  assert.doesNotMatch(template, /debug-toggle|debug-panel|toggleDebugPanel/)
 })
 
 test('denial offers settings, and recording starts only when settings grant permission', () => {
@@ -676,25 +669,24 @@ test('permission API errors clear the busy state and allow retry without claimin
   assert.equal(page.data.permissionBusy, false)
 })
 
-test('pitch trail samples marker position and color, preserves history and expires old points', () => {
+test('pitch trail samples live position and color, preserves history and expires old points', () => {
   const { page, tick, audios } = createPage(new Map(), false, 'en', 'index')
   tick()
   assert.equal(page.data.pitchTrail.length, 0)
-  page.toggleDebugPanel()
-  page.debugChangeCents({ detail: { value: -50 } })
+  inputTone(page, 6, -50)
   tick(300)
   const first = page.data.pitchTrail[0]
-  assert.equal(first.offset, page.data.debugOffset)
-  assert.equal(first.color, page.data.debugMarkerColor)
-  page.debugChangeCents({ detail: { value: 0 } })
+  assert.equal(first.offset, page.data.pitchOffset)
+  assert.equal(first.color, page.data.pitchMarkerColor)
+  inputTone(page)
   tick()
   assert.equal(page.data.pitchTrail[0], first)
   assert.equal(page.data.pitchTrail[1].color, '#16834b')
-  for (let i = 0; i < 210; i++) { tick(); audios.at(-1)?.ended() }
+  for (let i = 0; i < 210; i++) { tick(); audios.at(-1)?.ended(); inputTone(page) }
   assert.equal(page.data.pitchTrail.length, 200)
   assert.ok(!page.data.pitchTrail.includes(first))
   for (const state of ['silent', 'uncertain']) {
-    page.debugSetState({ currentTarget: { dataset: { state } } })
+    page.updateLiveReading(null, state)
     for (let i = 0; i < 201; i++) tick()
     assert.equal(page.data.pitchTrail.length, 0)
   }
@@ -702,10 +694,10 @@ test('pitch trail samples marker position and color, preserves history and expir
 
 test('manual selection preserves feedback and page exit clears timers and history', () => {
   const { page, tick, hide, show, detach, timers } = createPage(new Map(), false, 'en', 'index')
-  page.toggleDebugPanel()
-  page.debugChangeCents({ detail: { value: 5 } })
+  inputTone(page, 6, 5)
   tick(300)
   page.selectTuner({ currentTarget: { dataset: { number: 6 } } })
+  inputTone(page, 6, 5)
   tick()
   assert.equal(page.data.pitchTrail.length, 2)
   hide()
@@ -720,14 +712,13 @@ test('manual selection preserves feedback and page exit clears timers and histor
 
 test('automatic feedback identifies immediately and confirms a new string on its second reading', () => {
   const { page } = createPage(new Map(), false, 'en', 'index')
-  page.toggleDebugPanel()
-  page.debugChangeCents({ detail: { value: -20 } })
-  assert.equal(page.data.debugAutoTarget, 6)
-  assert.equal(page.data.debugHintKey, 'pitchLow')
-  page.debugSelectString({ detail: { value: '1' } })
-  assert.equal(page.data.debugAutoTarget, 6)
-  page.debugSelectString({ detail: { value: '1' } })
-  assert.equal(page.data.debugAutoTarget, 5, 'Switching does not require the previous string to be in tune')
+  inputTone(page, 6, -20)
+  assert.equal(page.data.automaticTarget, 6)
+  assert.equal(page.data.pitchHintKey, 'pitchLow')
+  inputTone(page, 5)
+  assert.equal(page.data.automaticTarget, 6)
+  inputTone(page, 5)
+  assert.equal(page.data.automaticTarget, 5, 'Switching does not require the previous string to be in tune')
 })
 
 const stringPairs = standardTuning.flatMap(({ number: first }) =>
@@ -737,25 +728,25 @@ for (const [first, other] of stringPairs) {
     const { page, tick } = createPage(new Map(), false, 'en', 'index')
     const input = number => page.updateLiveReading(getStringFrequency(number) * 2 ** (10 / 1200), 'tone')
     input(first)
-    assert.equal(page.data.debugAutoTarget, first)
+    assert.equal(page.data.automaticTarget, first)
     for (let i = 0; i < 4; i++) {
       input(other)
-      assert.equal(page.data.debugAutoTarget, first)
-      assert.equal(page.data.debugDeviation, 10, 'Do not reinterpret another string as a huge tuning error')
+      assert.equal(page.data.automaticTarget, first)
+      assert.equal(page.data.pitchDeviation, 10, 'Do not reinterpret another string as a huge tuning error')
       input(first)
     }
     input(other)
     input(other)
-    assert.equal(page.data.debugAutoTarget, other)
+    assert.equal(page.data.automaticTarget, other)
     input(first)
     page.updateLiveReading(null, 'uncertain')
     input(first)
-    assert.equal(page.data.debugAutoTarget, first, 'Unreliable input clears the previous target')
+    assert.equal(page.data.automaticTarget, first, 'Unreliable input clears the previous target')
     input(other)
     page.updateLiveReading(null, 'silent')
     tick(1000)
     input(other)
-    assert.equal(page.data.debugAutoTarget, other, 'A new pluck after silence starts immediately')
+    assert.equal(page.data.automaticTarget, other, 'A new pluck after silence starts immediately')
   })
 }
 
@@ -764,41 +755,41 @@ test('changing the pending target restarts the two-reading switch confirmation',
   const input = number => page.updateLiveReading(getStringFrequency(number) * 2 ** (10 / 1200), 'tone')
   for (const number of [6, 5, 4, 5]) {
     input(number)
-    assert.equal(page.data.debugAutoTarget, 6)
+    assert.equal(page.data.automaticTarget, 6)
   }
   input(5)
-  assert.equal(page.data.debugAutoTarget, 5)
+  assert.equal(page.data.automaticTarget, 5)
 })
 
-test('debug simulation continues through a string-switch confirmation', () => {
+test('pending automatic switches require a new live reading rather than timer-generated input', () => {
   const { page, tick } = createPage(new Map(), false, 'en', 'index')
-  page.toggleDebugPanel()
-  page.debugChangeCents({ detail: { value: 10 } })
-  page.debugSelectString({ detail: { value: '5' } })
-  assert.equal(page.data.debugAutoTarget, 6)
+  inputTone(page, 6, 10)
+  inputTone(page, 1, 10)
+  assert.equal(page.data.automaticTarget, 6)
   tick(100)
-  assert.equal(page.data.debugAutoTarget, 1)
+  assert.equal(page.data.automaticTarget, 6)
+  inputTone(page, 1, 10)
+  assert.equal(page.data.automaticTarget, 1)
 })
 
 test('automatic feedback resumes immediately after unreliable input or mode and page changes', () => {
   const { page, hide, show, detach, timers } = createPage(new Map(), false, 'en', 'index')
-  page.toggleDebugPanel()
-  const tone = () => page.debugSetState({ currentTarget: { dataset: { state: 'tone' } } })
+  const tone = () => inputTone(page)
   for (const interrupt of [
-    () => page.debugSetState({ currentTarget: { dataset: { state: 'uncertain' } } }),
-    () => { page.toggleDebugPanel(); page.toggleDebugPanel() },
+    () => page.updateLiveReading(null, 'uncertain'),
     () => { hide(); show() },
     () => {
       page.toggleAutomatic({ detail: { value: false } })
-      assert.equal(page.data.debugReading.target.number, 6, 'Manual input does not wait')
+      tone()
+      assert.equal(page.data.pitchReading.target.number, 6, 'Manual input does not wait')
       page.toggleAutomatic({ detail: { value: true } })
     },
   ]) {
     tone()
-    assert.equal(page.data.debugAutoTarget, 6)
+    assert.equal(page.data.automaticTarget, 6)
     interrupt()
     tone()
-    assert.equal(page.data.debugAutoTarget, 6)
+    assert.equal(page.data.automaticTarget, 6)
   }
   detach()
   assert.equal(timers.size, 0)
@@ -877,7 +868,7 @@ test('live success plays once, ignores speaker input and resumes with fresh PCM'
   page.updateLiveReading(null, 'uncertain')
   tick(500)
   assert.equal(page.data.pitchStable, true)
-  assert.equal(page.data.debugHintKey, 'inTune')
+  assert.equal(page.data.pitchHintKey, 'inTune')
   audios[0].ended()
   input(0)
   tick(500)
@@ -898,7 +889,7 @@ test('live success plays once, ignores speaker input and resumes with fresh PCM'
   assert.equal(audios.length, 2)
 })
 
-for (const action of ['hide', 'detach', 'interrupted', 'selection', 'automatic', 'debug', 'error', 'timeout']) {
+for (const action of ['hide', 'detach', 'interrupted', 'selection', 'automatic', 'error', 'timeout']) {
   test(`${action} releases success playback and allows fresh tuning`, () => {
     const { page, tick, audios, recordingEvents, hide, detach, show } = createPage(new Map(), false, 'en', 'index')
     page.toggleAutomatic({ detail: { value: false } })
@@ -913,7 +904,6 @@ for (const action of ['hide', 'detach', 'interrupted', 'selection', 'automatic',
     if (action === 'interrupted') recordingEvents.InterruptionBegin()
     if (action === 'selection') page.selectTuner({ currentTarget: { dataset: { number: 5 } } })
     if (action === 'automatic') page.toggleAutomatic({ detail: { value: true } })
-    if (action === 'debug') page.toggleDebugPanel()
     if (action === 'error') audios[0].error()
     if (action === 'timeout') tick(1000)
     assert.equal(audios[0].destroyed, true)
@@ -922,26 +912,21 @@ for (const action of ['hide', 'detach', 'interrupted', 'selection', 'automatic',
     tick(300)
     page.applyPitchReading(frequency, 'tone')
     assert.equal(page.data.pitchStable, false)
-    assert.equal(page.data.debugHintKey, 'pitchHigh')
+    assert.equal(page.data.pitchHintKey, 'pitchHigh')
   })
 }
 
-test('debug controls simulate all six strings and signed offsets without premature success audio', () => {
-  const { page, audios, tick } = createPage(new Map(), false, 'zh_CN', 'index')
-  assert.equal(page.data.debugEnabled, true)
-  assert.equal(page.data.debugOpen, false)
-  page.toggleDebugPanel()
-  assert.equal(page.data.debugOpen, true)
-  for (let index = 0; index < 6; index++) {
-    page.debugSelectString({ detail: { value: String(index) } })
-    tick(300)
+test('live readings drive all six strings and signed offsets without premature success audio', () => {
+  const { page, audios } = createPage(new Map(), false, 'zh_CN', 'index')
+  for (const { number } of standardTuning) {
+    page.clearPitchReading()
     for (const value of [-100, -5, 0, 5, 100]) {
-      page.debugChangeCents({ detail: { value } })
-      assert.equal(page.data.debugReading.target.number, 6 - index)
-      assert.equal(page.data.debugDeviation || 0, value)
-      assert.equal(page.data.debugAutoTarget, 6 - index)
-      assert.ok(Math.abs(page.data.debugOffset - value * .4) < .001)
-      assert.equal(page.data.debugHintKey, value < 0 ? 'pitchLow' : value > 0 ? 'pitchHigh' : 'holdPitch')
+      inputTone(page, number, value)
+      assert.equal(page.data.pitchReading.target.number, number)
+      assert.equal(page.data.pitchDeviation || 0, value)
+      assert.equal(page.data.automaticTarget, number)
+      assert.ok(Math.abs(page.data.pitchOffset - value * .4) < .001)
+      assert.equal(page.data.pitchHintKey, value < 0 ? 'pitchLow' : value > 0 ? 'pitchHigh' : 'holdPitch')
     }
   }
   assert.equal(audios.length, 0)
@@ -949,93 +934,58 @@ test('debug controls simulate all six strings and signed offsets without prematu
 
 test('deviations within two cents use a white outline and green-fill state, including exact boundaries', () => {
   const { page, tick, audios } = createPage(new Map(), false, 'zh_CN', 'index')
-  page.toggleDebugPanel()
   for (let index = 0; index < 6; index++) {
-    page.debugSelectString({ detail: { value: String(index) } })
+    page.clearPitchReading()
     for (const value of [-2, -1, 0, 1, 2]) {
-      page.debugChangeCents({ detail: { value } })
-      assert.equal(page.data.debugInTune, true)
-      assert.equal(page.data.debugMarkerColor, '#f2f5f3')
-      assert.equal(page.data.debugHintKey, 'holdPitch')
+      inputTone(page, 6 - index, value)
+      assert.equal(page.data.pitchInTune, true)
+      assert.equal(page.data.pitchMarkerColor, '#f2f5f3')
+      assert.equal(page.data.pitchHintKey, 'holdPitch')
       tick()
       audios.at(-1)?.ended()
       assert.equal(page.data.pitchTrail.at(-1).color, '#16834b')
     }
     for (const value of [-2.01, 2.01]) {
-      page.debugChangeCents({ detail: { value } })
-      assert.equal(page.data.debugInTune, false)
+      inputTone(page, 6 - index, value)
+      assert.equal(page.data.pitchInTune, false)
       tick()
-      assert.equal(page.data.pitchTrail.at(-1).color, page.data.debugMarkerColor)
+      assert.equal(page.data.pitchTrail.at(-1).color, page.data.pitchMarkerColor)
     }
   }
 })
 
 test('marker position and redness increase symmetrically with the deviation magnitude', () => {
   const { page, tick } = createPage(new Map(), false, 'en', 'index')
-  page.toggleDebugPanel()
-  page.debugSelectString({ detail: { value: '0' } })
+  inputTone(page)
   tick(300)
   let previousGreen = 256, previousOffset = 0
   for (const value of [3, 5, 20, 50, 100]) {
-    page.debugChangeCents({ detail: { value } })
-    const color = page.data.debugMarkerColor
+    inputTone(page, 6, value)
+    const color = page.data.pitchMarkerColor
     const green = Number(color.match(/rgb\(244, (\d+),/)[1])
     assert.ok(green <= previousGreen, 'Reducing the green channel shifts yellow toward red')
-    assert.ok(page.data.debugOffset > previousOffset)
+    assert.ok(page.data.pitchOffset > previousOffset)
     previousGreen = green
-    previousOffset = page.data.debugOffset
-    page.debugChangeCents({ detail: { value: -value } })
-    assert.equal(page.data.debugMarkerColor, color)
-    assert.ok(Math.abs(page.data.debugOffset + previousOffset) < .001)
+    previousOffset = page.data.pitchOffset
+    inputTone(page, 6, -value)
+    assert.equal(page.data.pitchMarkerColor, color)
+    assert.ok(Math.abs(page.data.pitchOffset + previousOffset) < .001)
   }
-  page.debugSetState({ currentTarget: { dataset: { state: 'silent' } } })
+  page.updateLiveReading(null, 'silent')
   tick(1000)
-  assert.equal(page.data.debugInTune, false)
-  assert.equal(page.data.debugMarkerColor, '#f2f5f3')
-  assert.equal(page.data.debugOffset, 0)
+  assert.equal(page.data.pitchInTune, false)
+  assert.equal(page.data.pitchMarkerColor, '#f2f5f3')
+  assert.equal(page.data.pitchOffset, 0)
 })
 
-test('debug input respects manual selection and clears after silence, unreliable input, close and hide', () => {
-  const { page, hide, tick } = createPage(new Map(), false, 'en', 'index')
-  page.toggleDebugPanel()
-  page.debugSelectString({ detail: { value: '1' } }) // Sounding string 5 A.
-  page.toggleAutomatic({ detail: { value: false } }) // Locked to string 6 E.
-  assert.equal(page.data.debugReading.target.number, 6)
-  assert.equal(page.data.debugDeviation, 500)
-  assert.equal(page.data.debugAutoTarget, 0, 'Manual mode must not flash an automatic candidate')
-  assert.equal(page.data.debugOffset, 40, 'Large manual deviations stop at the grid edge')
-  page.toggleAutomatic({ detail: { value: true } })
-  tick(300)
-  assert.equal(page.data.debugReading.target.number, 5)
-  for (const state of ['silent', 'uncertain']) {
-    page.debugSetState({ currentTarget: { dataset: { state } } })
-    if (state === 'silent') tick(1000)
-    assert.equal(page.data.debugState, state)
-    assert.equal(page.data.debugReading, null)
-    assert.equal(page.data.debugFrequency, '')
-    assert.equal(page.data.debugAutoTarget, 0)
-    assert.equal(page.data.debugOffset, 0)
-  }
-  page.debugSetState({ currentTarget: { dataset: { state: 'tone' } } })
-  page.toggleDebugPanel()
-  assert.equal(page.data.debugReading, null)
-  assert.equal(page.data.debugAutoTarget, 0)
-  page.debugSelectString({ detail: { value: '0' } })
-  hide()
-  assert.equal(page.data.debugReading, null)
-  assert.equal(page.data.debugAutoTarget, 0)
-})
 
-for (const platform of ['ios', 'android', 'windows']) {
-  test(`debug controls are hidden and inactive on ${platform}`, () => {
+
+for (const platform of ['devtools', 'ios', 'android', 'windows']) {
+  test(`simulation UI and handlers are absent on ${platform}`, () => {
     const { page } = createPage(new Map(), false, 'en', 'index', platform)
-    page.toggleDebugPanel()
-    page.debugSelectString({ detail: { value: '1' } })
-    page.debugChangeCents({ detail: { value: 5 } })
-    page.debugSetState({ currentTarget: { dataset: { state: 'tone' } } })
-    assert.equal(page.data.debugEnabled, false)
-    assert.equal(page.data.debugOpen, false)
-    assert.equal(page.data.debugReading, null)
+    assert.ok(Object.keys(page.data).every(key => !key.startsWith('debug')))
+    for (const name of ['toggleDebugPanel', 'updateDebugReading', 'debugSelectString', 'debugChangeCents', 'debugSetState']) assert.equal(page[name], undefined)
+    assert.ok(!('pcmBytes' in page.data) && !('liveFrequency' in page.data))
   })
 }
 
@@ -1050,7 +1000,7 @@ test('home connects all six tuning pegs and clears the target in auto mode', () 
     assert.deepEqual(page.data.selection, { mode: 'manual', target: { number, note } })
     page.selectTuner({ currentTarget: { dataset: { number } } })
     assert.equal(page.data.pluckHint, `Pluck string ${number} (${note})`)
-    assert.equal(page.data.debugReading, null)
+    assert.equal(page.data.pitchReading, null)
     assert.equal(audios.length, 0, 'Selecting or reselecting a string must not create an audio player')
   }
   page.toggleAutomatic({ detail: { value: true } })
