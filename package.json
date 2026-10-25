@@ -1,14 +1,14 @@
 {
-  "name": "miniprogram-ts-quickstart",
-  "version": "1.0.0",
-  "description": "",
+  "name": "tuner",
+  "version": "0.1.0",
+  "description": "免费、无广告的微信吉他调音小程序，支持六弦标准调弦、自动识弦和手动选弦。",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "test:coverage": "node --experimental-test-coverage --test tests/*.test.mjs"
   },
   "keywords": [],
   "author": "",
-  "license": "",
+  "license": "MIT",
   "dependencies": {
   },
   "devDependencies": {
