@@ -463,7 +463,6 @@ test('privacy notice follows the target hint while permission and recording aler
   assert.match(alert, /wx:if=/)
   assert.match(alert, /microphonePermission === 'denied'/)
   assert.match(alert, /microphonePermission === 'error'/)
-  assert.match(alert, /recordingState === 'error'/)
   assert.match(alert, /listeningStopped/)
 })
 
@@ -502,15 +501,47 @@ test('recording limit and interruption require an explicit continue action', asy
   assert.equal(recordingStarts.length, 3)
 })
 
-test('file cleanup failure reaches the page instead of silently restarting recording', async () => {
+test('file cleanup failure has its own message and retries cleanup before recording', async () => {
+  let fail = true
   const { page, recordingEvents, recordingStarts } = createPage(new Map(), false, 'en', 'index', 'devtools', {
-    getFileSystemManager: () => ({ unlink: options => options.fail({ errMsg: 'unlink failed' }) }),
+    getFileSystemManager: () => ({ unlink: options => fail ? options.fail({ errMsg: 'unlink failed' }) : options.success() }),
   })
   recordingEvents.Start()
   await recordingEvents.Stop({ tempFilePath: 'wxfile://failed.pcm' })
-  assert.equal(page.data.recordingState, 'error')
+  assert.equal(page.data.recordingState, 'cleanup-error')
+  assert.equal(page.data.recordingHintKey, 'recordingCleanupError')
+  assert.equal(page.data.listeningStopped, true)
   assert.equal(page.data.recordingRequested, false)
   assert.equal(recordingStarts.length, 1)
+  fail = false
+  page.startRecording()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(recordingStarts.length, 2)
+  assert.equal(page.data.recordingState, 'starting')
+  assert.equal('recordingErrorDetail' in page.data, false)
+  assert.equal(page.showRecordingError, undefined)
+})
+
+test('WeChat-managed PCM temporary files do not block listening when unlink is forbidden', async () => {
+  let unlinkCalls = 0
+  const tempFilePath = 'wxfile://tmp_b2bcf308239332fe0ad3d89e14d7ba7f.pcm'
+  const { page, recordingEvents, hide, show, recordingStarts } = createPage(new Map(), false, 'zh_CN', 'index', 'ios', {
+    getFileSystemManager: () => ({ unlink: options => {
+      unlinkCalls++
+      options.fail({ errMsg: `unlink:fail permission denied, open ${tempFilePath}` })
+    } }),
+  })
+  recordingEvents.Start()
+  hide()
+  recordingEvents.Error({ errMsg: 'microphone unavailable after switching apps' })
+  await recordingEvents.Stop({ tempFilePath })
+  show()
+  assert.equal(page.data.recordingState, 'starting')
+  assert.equal(recordingStarts.length, 2)
+  recordingEvents.Start()
+  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
+  assert.equal(page.data.debugReading.target.number, 5)
+  assert.equal(unlinkCalls, 0)
 })
 
 for (const platform of ['devtools', 'ios', 'android']) {
@@ -527,9 +558,37 @@ for (const platform of ['devtools', 'ios', 'android']) {
     hide()
     await recordingEvents.Stop({ tempFilePath })
     show()
-    assert.equal(page.data.recordingState, platform === 'devtools' ? 'starting' : 'error')
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(page.data.recordingState, platform === 'devtools' ? 'starting' : 'cleanup-error')
     assert.equal(recordingStarts.length, platform === 'devtools' ? 2 : 1)
-    assert.equal(unlinkCalls, platform === 'devtools' ? 0 : 1)
+    assert.equal(unlinkCalls, platform === 'devtools' ? 0 : 2)
+  })
+}
+
+for (const language of ['zh_CN', 'en']) {
+  test(`${language} can retry microphone errors after returning from another app`, () => {
+    const { page, hide, show, recordingEvents, recordingStarts } = createPage(new Map(), false, language, 'index', 'ios')
+    page.selectTuner({ currentTarget: { dataset: { number: 5 } } })
+    recordingEvents.Start()
+    hide()
+    recordingEvents.Error({ errMsg: 'microphone unavailable' })
+    show()
+    assert.equal(recordingStarts.length, 2, 'Returning can retry the existing recorder')
+    recordingEvents.Error({ errMsg: 'microphone still unavailable' })
+    assert.equal(page.data.recordingHintKey, 'recordingError')
+    assert.equal(page.data.listeningStopped, true)
+    assert.equal(page.data.recordingRequested, false)
+    assert.notEqual(page.data.messages.recordingError, page.data.messages.recordingCleanupError)
+    page.startRecording()
+    recordingEvents.Start()
+    recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
+    assert.equal(recordingStarts.length, 3)
+    assert.equal(page.data.listeningStopped, false)
+    assert.equal(page.data.selection.target.number, 5)
+    assert.equal(page.data.debugReading.target.number, 5)
+    const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
+    assert.match(template, /microphonePermission === 'granted' && listeningStopped/)
+    assert.match(template, /recordingState === 'cleanup-error' \? messages.retryMicrophonePermission/)
   })
 }
 

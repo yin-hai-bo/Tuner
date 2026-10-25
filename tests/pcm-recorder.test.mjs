@@ -93,17 +93,59 @@ test('synchronous start failure is reported, and idle interruption does not star
   session.recorder.start = () => { throw new Error('unsupported format') }
   assert.equal(session.controller.start(), false)
   assert.equal(session.states.at(-1), 'error')
+  session.recorder.start = options => session.starts.push(options)
+  assert.equal(session.controller.start(), true)
+  session.events.Start()
+  assert.equal(session.states.at(-1), 'recording')
 })
 
-test('recording and cleanup failures are reported instead of silently restarting', async () => {
-  const session = createRecorder(async () => { throw new Error('unlink failed') })
+test('microphone errors can be retried after an interruption without recreating the recorder', () => {
+  const session = createRecorder()
   session.controller.start()
+  session.events.Start()
+  session.events.InterruptionBegin()
   session.events.Error({ errMsg: 'recording failed' })
   session.events.FrameRecorded({ frameBuffer: new ArrayBuffer(4096) })
   assert.equal(session.states.at(-1), 'error')
   assert.equal(session.frames.length, 0)
   assert.equal(session.controller.start(), false)
+  session.events.InterruptionEnd()
+  assert.equal(session.controller.start(), true)
+  session.events.Start()
+  session.events.FrameRecorded({ frameBuffer: new ArrayBuffer(4096) })
+  assert.equal(session.frames.length, 1)
+})
+
+test('cleanup errors are separate and retry deletion before allowing more recording', async () => {
+  let fail = true
+  const session = createRecorder(async () => { if (fail) throw new Error('unlink failed') })
+  session.controller.start()
+  session.events.Start()
   await session.events.Stop({ tempFilePath: 'wxfile://failed.pcm' })
+  assert.equal(session.states.at(-1), 'cleanup-error')
+  assert.equal(session.controller.start(), true)
+  assert.equal(session.controller.start(), false, 'Do not duplicate cleanup retries')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(session.states.at(-1), 'cleanup-error')
+  assert.equal(session.starts.length, 1)
+  fail = false
+  session.controller.start()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(session.states.at(-1), 'idle')
+  assert.equal(session.controller.start(), true)
+  assert.deepEqual(session.removed, Array(3).fill('wxfile://failed.pcm'))
+})
+
+test('a recording error does not bypass file cleanup already in progress', async () => {
+  let finish
+  const session = createRecorder(() => new Promise(resolve => { finish = resolve }))
+  session.controller.start()
+  const stopped = session.events.Stop({ tempFilePath: 'wxfile://failed.pcm' })
+  session.events.Error({ errMsg: 'recording failed' })
+  assert.equal(session.controller.start(), false)
+  finish()
+  await stopped
   assert.equal(session.states.at(-1), 'error')
+  assert.equal(session.controller.start(), true)
   assert.deepEqual(session.removed, ['wxfile://failed.pcm'])
 })

@@ -14,8 +14,9 @@ let successPlaying = false
 function recordingFeedback(state: RecordingState) {
   return {
     recordingState: state,
-    listeningStopped: state === 'interrupted' || state === 'ended',
-    recordingHintKey: state === 'interrupted' ? 'recordingInterrupted' : state === 'ended' ? 'recordingEnded' : 'microphonePrivacy',
+    listeningStopped: ['interrupted', 'ended', 'error', 'cleanup-error'].includes(state),
+    recordingHintKey: state === 'error' ? 'recordingError' : state === 'cleanup-error' ? 'recordingCleanupError' :
+      state === 'interrupted' ? 'recordingInterrupted' : state === 'ended' ? 'recordingEnded' : 'microphonePrivacy',
   }
 }
 type RecordingPage = {
@@ -131,10 +132,16 @@ Component({
               recordingPage?.clearPitchReading()
             }
             recordingPage?.setData(recordingFeedback(state))
-            if (['interrupted', 'ended', 'error'].includes(state)) recordingPage?.setData({ recordingRequested: false })
+            if (['interrupted', 'ended', 'error', 'cleanup-error'].includes(state)) recordingPage?.setData({ recordingRequested: false })
             if (state === 'idle' && recordingPage?.data.recordingRequested) recordingPage.startRecording()
           },
           filePath => new Promise<void>((resolve, reject) => {
+            // Recorder-owned temporary files are managed by WeChat, not writable
+            // user files. Do not persist them just to gain deletion permission.
+            if (/^wxfile:\/\/tmp_[0-9a-f]+\.pcm$/i.test(filePath)) {
+              resolve()
+              return
+            }
             // Devtools returns virtual HTTP files that its filesystem cannot unlink.
             if (isDevtools && filePath.startsWith('http://tmp/')) {
               resolve()

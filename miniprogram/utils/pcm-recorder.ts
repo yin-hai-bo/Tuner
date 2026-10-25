@@ -1,4 +1,4 @@
-export type RecordingState = 'idle' | 'starting' | 'recording' | 'stopping' | 'ended' | 'interrupted' | 'error'
+export type RecordingState = 'idle' | 'starting' | 'recording' | 'stopping' | 'ended' | 'interrupted' | 'error' | 'cleanup-error'
 
 // Construct once for wx's global RecorderManager. The caller checks permission
 // before start(), and calls stop() when leaving the page. PCM stays in memory.
@@ -11,6 +11,8 @@ export function createPcmRecorder(
   let state: RecordingState = 'idle'
   let interrupted = false
   let pendingStop = false
+  let cleaning = false
+  let cleanupPath = ''
   function update(next: RecordingState) {
     state = next
     onState(next)
@@ -22,21 +24,29 @@ export function createPcmRecorder(
   recorder.onFrameRecorded(({ frameBuffer }) => {
     if (state === 'recording' && frameBuffer.byteLength > 0) onFrame(frameBuffer)
   })
-  recorder.onStop(async ({ tempFilePath }) => {
-    const next = state === 'interrupted' || state === 'error' ? state : state === 'stopping' ? 'idle' : 'ended'
-    update('stopping')
+  async function cleanup(tempFilePath: string, next: RecordingState) {
     pendingStop = true
+    cleaning = true
+    cleanupPath = tempFilePath
+    update('stopping')
     try {
       if (tempFilePath) await removeFile(tempFilePath)
-      pendingStop = false
-      update(next)
+      cleanupPath = ''
     } catch {
-      update('error')
-    } finally {
-      pendingStop = false
+      next = 'cleanup-error'
     }
+    cleaning = false
+    pendingStop = false
+    update(next === 'cleanup-error' ? next : state === 'error' ? 'error' : next)
+  }
+  recorder.onStop(({ tempFilePath }) => {
+    const next = state === 'interrupted' || state === 'error' ? state : state === 'stopping' ? 'idle' : 'ended'
+    return cleanup(tempFilePath, next)
   })
-  recorder.onError(() => update('error'))
+  recorder.onError(() => {
+    if (!cleaning) pendingStop = false
+    update('error')
+  })
   recorder.onInterruptionBegin(() => {
     interrupted = true
     if (state !== 'starting' && state !== 'recording') return
@@ -47,7 +57,12 @@ export function createPcmRecorder(
   recorder.onInterruptionEnd(() => { interrupted = false })
   return {
     start() {
-      if (interrupted || pendingStop || !['idle', 'ended', 'interrupted'].includes(state)) return false
+      if (interrupted || pendingStop) return false
+      if (cleanupPath) {
+        void cleanup(cleanupPath, 'idle')
+        return true
+      }
+      if (!['idle', 'ended', 'interrupted', 'error'].includes(state)) return false
       update('starting')
       try {
         recorder.start({ duration: 600000, sampleRate: 16000, numberOfChannels: 1, format: 'PCM', frameSize: 4 })
