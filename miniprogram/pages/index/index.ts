@@ -1,5 +1,4 @@
 import { getMessages, getPreferredLanguage } from '../../utils/i18n'
-import { createAutomaticStringConfirmation } from '../../utils/automatic-string-confirmation'
 import { createStableTuningConfirmation } from '../../utils/stable-tuning'
 import { createSuccessConfirmation, createSuccessSound } from '../../utils/success-sound'
 import { createPcmRecorder, RecordingState } from '../../utils/pcm-recorder'
@@ -9,7 +8,6 @@ import { getPitchReading, getStringFrequency, selectString, standardTuning, useA
 const languageStorageKey = 'preferredLanguage'
 const licenseStorageKey = 'usageNoticeAccepted'
 let trailTimer: ReturnType<typeof setInterval> | undefined
-const confirmAutomaticString = createAutomaticStringConfirmation()
 const confirmStableTuning = createStableTuningConfirmation()
 const confirmSuccess = createSuccessConfirmation()
 let successPlaying = false
@@ -33,6 +31,7 @@ let recordingState: RecordingState = 'idle'
 let permissionEpoch = 0
 let lastLiveInputAt: number | null = null
 let lastReadingAt: number | null = null
+let pendingAutoString: number | null = null
 const pcmPitch = createPcmPitchReader((frequency, state) => recordingPage?.updateLiveReading(frequency, state))
 const successSound = createSuccessSound(() => wx.createInnerAudioContext(), playing => {
   successPlaying = playing
@@ -225,8 +224,8 @@ Component({
     },
     stopPitchTrail() {
       this.resetSuccessFeedback()
+      pendingAutoString = null
       lastReadingAt = null
-      confirmAutomaticString(null, Date.now())
       confirmStableTuning(null, 0, Date.now())
       if (trailTimer !== undefined) clearInterval(trailTimer)
       trailTimer = undefined
@@ -241,6 +240,7 @@ Component({
         lastLiveInputAt = null
       }
       if (this.data.debugState === 'silent' && lastReadingAt !== null && now - lastReadingAt >= 1000) this.clearPitchReading()
+      if (pendingAutoString !== null) return
       const { pitchTrail, debugReading, debugState, debugOffset, debugMarkerColor } = this.data
       const points = pitchTrail.filter(point => point.id > now - 20000)
       if (debugReading && debugState !== 'silent') {
@@ -277,6 +277,7 @@ Component({
     applyPitchReading(frequency: number | null, state: PitchInputState) {
       if (successPlaying) return
       const now = Date.now()
+      if (state !== 'tone') pendingAutoString = null
       const holding = lastReadingAt !== null && now - lastReadingAt < 1000 && now >= lastReadingAt
       if (state === 'silent' && holding && this.data.debugReading) {
         confirmStableTuning(null, 0, now)
@@ -284,12 +285,20 @@ Component({
         return
       }
       const { selection } = this.data
-      const candidate = state === 'tone' && frequency !== null
+      const reading = state === 'tone' && frequency !== null
         ? getPitchReading(frequency, selection.mode === 'manual' ? selection.target.number : undefined)
         : null
-      const confirmed = confirmAutomaticString(
-        selection.mode === 'auto' && candidate ? candidate.target.number : null, Date.now())
-      const reading = selection.mode === 'manual' || confirmed === candidate?.target.number ? candidate : null
+      const previous = this.data.debugReading?.target.number
+      const target = reading?.target.number ?? null
+      const switchingString = selection.mode === 'auto' && holding &&
+        previous !== undefined && target !== null && previous !== target
+      if (switchingString && pendingAutoString !== target) {
+        pendingAutoString = target
+        confirmStableTuning(null, 0, now)
+        this.setData({ debugState: 'tone', debugFrequency: '' })
+        return
+      }
+      pendingAutoString = null
       const cents = reading ? Math.round(reading.cents) : 0
       const distance = reading ? Math.abs(reading.cents) : 0
       // Allow only negligible floating-point error at the exact 2-cent boundary.

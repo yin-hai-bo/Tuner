@@ -3,18 +3,18 @@ import { readFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import { runInNewContext } from 'node:vm'
 import test from 'node:test'
-import { detectPitch } from '../miniprogram/utils/pitch-detection.ts'
+import { detectMpmPitch } from '../miniprogram/utils/mpm-pitch.ts'
 import { getStringFrequency } from '../miniprogram/utils/tuning-selection.ts'
 
 // The mini program compiler resolves extensionless TS imports; Node does not.
 const source = stripTypeScriptTypes(readFileSync(new URL('../miniprogram/utils/pcm-pitch.ts', import.meta.url), 'utf8')
   .replace(/^import .*\r?\n/gm, '').replace('export function', 'function'))
-const createPcmPitchReader = runInNewContext(`${source}\ncreatePcmPitchReader`, { detectPitch })
+const createPcmPitchReader = runInNewContext(`${source}\ncreatePcmPitchReader`, { detectMpmPitch })
 
 test('signed little-endian limits normalize without overflow or sign loss', () => {
   let captured
   const create = runInNewContext(`${source}\ncreatePcmPitchReader`, {
-    detectPitch: samples => { captured = Array.from(samples); return null },
+    detectMpmPitch: samples => { captured = Array.from(samples); return null },
   })
   const buffer = new ArrayBuffer(8192)
   const view = new DataView(buffer)
@@ -35,11 +35,11 @@ function tone(frequency, harmonic = 0, length = 4096) {
 }
 
 for (const number of [6, 5, 4, 3, 2, 1]) {
-  test(`PCM string ${number} keeps its fundamental despite a strong second harmonic`, () => {
+  test(`PCM string ${number} detects a tone with ordinary harmonics`, () => {
     const readings = []
     const reader = createPcmPitchReader(value => readings.push(value))
     const expected = getStringFrequency(number)
-    const buffer = tone(expected, 10)
+    const buffer = tone(expected, .5)
     reader.push(buffer.slice(0, 4096))
     assert.equal(readings.length, 0)
     reader.push(buffer.slice(4096))
@@ -47,6 +47,18 @@ for (const number of [6, 5, 4, 3, 2, 1]) {
     assert.ok(Math.abs(1200 * Math.log2(readings[0] / expected)) < 2)
   })
 }
+
+test('PCM uses MPM for a dominant high E mixed with a weak low E', () => {
+  const low = getStringFrequency(6), high = getStringFrequency(1)
+  const buffer = new ArrayBuffer(8192), data = new DataView(buffer)
+  for (let i = 0; i < 4096; i++) data.setInt16(i * 2, Math.round(32767 *
+    (.08 * Math.sin(2 * Math.PI * low * i / 16000) + .64 * Math.sin(2 * Math.PI * high * i / 16000))), true)
+  const readings = []
+  const reader = createPcmPitchReader((frequency, state) => readings.push({ frequency, state }))
+  reader.push(buffer)
+  assert.ok(Math.abs(1200 * Math.log2(readings[0].frequency / high)) < 2)
+  assert.equal(readings[0].state, 'tone')
+})
 
 test('arbitrary byte boundaries and multiple windows preserve all samples', () => {
   const readings = []
@@ -56,6 +68,13 @@ test('arbitrary byte boundaries and multiple windows preserve all samples', () =
   for (let offset = 0; offset < buffer.byteLength; offset += 333) reader.push(buffer.slice(offset, offset + 333))
   assert.equal(readings.length, 2)
   for (const value of readings) assert.ok(Math.abs(1200 * Math.log2(value / 110)) < 2)
+})
+
+test('PCM does not force a pure high E down two octaves', () => {
+  let frequency
+  const reader = createPcmPitchReader(value => { frequency = value })
+  reader.push(tone(getStringFrequency(1)))
+  assert.ok(Math.abs(1200 * Math.log2(frequency / getStringFrequency(1))) < 2)
 })
 
 test('reset discards partial samples and bytes from the previous session', () => {

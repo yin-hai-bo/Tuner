@@ -13,15 +13,18 @@ export function detectPitch(samples: Float32Array, sampleRate: number): number |
     squares += sample * sample
   }
   // Reject silence and DC; the threshold needs validation with real microphone PCM.
-  if (squares / samples.length - (sum / samples.length) ** 2 < 1e-6) return null
+  const power = squares / samples.length - (sum / samples.length) ** 2
+  if (power < 1e-6) return null
 
   const difference = new Float64Array(maxLag + 2)
-  const window = samples.length - maxLag - 1
+  // Compare the most recent 64ms, retaining enough periods for the lowest string.
+  const window = Math.min(samples.length - maxLag - 1, Math.round(sampleRate * .064))
+  const offset = samples.length - maxLag - window - 1
   let cumulative = 0
   difference[0] = 1
   for (let lag = 1; lag <= maxLag + 1; lag++) {
     let value = 0
-    for (let i = 0; i < window; i++) value += (samples[i] - samples[i + lag]) ** 2
+    for (let i = offset; i < offset + window; i++) value += (samples[i] - samples[i + lag]) ** 2
     cumulative += value
     difference[lag] = cumulative > 0 ? value * lag / cumulative : 1
   }

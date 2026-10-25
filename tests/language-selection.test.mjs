@@ -4,11 +4,10 @@ import { stripTypeScriptTypes } from 'node:module'
 import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
-import { createAutomaticStringConfirmation } from '../miniprogram/utils/automatic-string-confirmation.ts'
 import { createStableTuningConfirmation } from '../miniprogram/utils/stable-tuning.ts'
 import { createSuccessConfirmation } from '../miniprogram/utils/success-sound.ts'
 import { createPcmRecorder } from '../miniprogram/utils/pcm-recorder.ts'
-import { detectPitch } from '../miniprogram/utils/pitch-detection.ts'
+import { detectMpmPitch } from '../miniprogram/utils/mpm-pitch.ts'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
 
 function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools', wxOverrides = {}, accepted = true) {
@@ -37,13 +36,12 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
   })
   const pcmSource = stripTypeScriptTypes(readFileSync(new URL('../miniprogram/utils/pcm-pitch.ts', import.meta.url), 'utf8')
     .replace(/^import .*\r?\n/gm, '').replace('export function', 'function'))
-  const createPcmPitchReader = runInNewContext(`${pcmSource}\ncreatePcmPitchReader`, { detectPitch })
+  const createPcmPitchReader = runInNewContext(`${pcmSource}\ncreatePcmPitchReader`, { detectMpmPitch })
   runInNewContext(source, {
     Date: { now: () => now },
     setInterval: callback => { timers.set(++timerId, callback); return timerId },
     clearInterval: id => timers.delete(id),
     getMessages, getPreferredLanguage,
-    createAutomaticStringConfirmation,
     createStableTuningConfirmation,
     createSuccessConfirmation, createSuccessSound,
     createPcmRecorder,
@@ -215,7 +213,7 @@ test('home receives frames, stops on hide and waits for file cleanup before rest
   assert.equal(session.recordingStops, 2)
 })
 
-test('live PCM enters automatic confirmation and clears on exit', () => {
+test('live PCM immediately identifies its string and clears on exit', () => {
   const { page, recordingEvents, hide } = createPage(new Map(), false, 'en', 'index')
   const pcm = new ArrayBuffer(8192)
   const view = new DataView(pcm)
@@ -225,7 +223,7 @@ test('live PCM enters automatic confirmation and clears on exit', () => {
   assert.equal(page.data.liveFrequency, '')
   recordingEvents.FrameRecorded({ frameBuffer: pcm.slice(4097) })
   assert.ok(Math.abs(Number(page.data.liveFrequency) - 110) < .1)
-  assert.equal(page.data.debugReading, null)
+  assert.equal(page.data.debugReading.target.number, 5)
   hide()
   assert.equal(page.data.liveFrequency, '')
   recordingEvents.FrameRecorded({ frameBuffer: pcm })
@@ -238,6 +236,27 @@ function pcmTone(frequency) {
   for (let i = 0; i < 4096; i++) view.setInt16(i * 2, Math.round(24000 * Math.sin(2 * Math.PI * frequency * i / 16000)), true)
   return frame
 }
+
+test('automatic and manual recording share pitch detection while manual keeps its selected target', () => {
+  const { page, recordingEvents } = createPage(new Map(), false, 'en', 'index', 'ios')
+  const frame = new ArrayBuffer(8192), view = new DataView(frame)
+  const low = getStringFrequency(6), high = getStringFrequency(1)
+  for (let i = 0; i < 4096; i++) view.setInt16(i * 2, Math.round(32767 *
+    (.08 * Math.sin(2 * Math.PI * low * i / 16000) + .64 * Math.sin(2 * Math.PI * high * i / 16000))), true)
+  recordingEvents.Start()
+  recordingEvents.FrameRecorded({ frameBuffer: frame })
+  assert.equal(page.data.debugAutoTarget, 1)
+  assert.ok(Math.abs(1200 * Math.log2(Number(page.data.liveFrequency) / high)) < 2)
+  for (const number of [6, 1]) {
+    page.selectTuner({ currentTarget: { dataset: { number } } })
+    recordingEvents.FrameRecorded({ frameBuffer: frame })
+    assert.equal(page.data.debugReading.target.number, number)
+    assert.ok(Math.abs(1200 * Math.log2(Number(page.data.liveFrequency) / high)) < 2)
+    assert.ok(Math.abs(page.data.debugDeviation - (number === 6 ? 2400 : 0)) <= 2)
+    assert.equal(page.data.debugAutoTarget, 0)
+    assert.equal(page.data.debugState, 'tone')
+  }
+})
 
 test('silent PCM preserves the last result for 999ms and clears at 1000ms without extending it', () => {
   const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
@@ -335,11 +354,9 @@ test('live PCM shows the tuned check only after 500ms and resets on mode changes
   assert.equal(page.data.pitchStable, false)
 })
 
-test('stable tuning starts after automatic string confirmation, not at the first candidate', () => {
+test('automatic feedback is immediate but success still requires 500ms of stable tuning', () => {
   const { page, tick, audios } = createPage(new Map(), false, 'en', 'index', 'android')
   const input = () => page.updateLiveReading(getStringFrequency(6), 'tone')
-  input()
-  tick(300)
   input()
   assert.equal(page.data.debugAutoTarget, 6)
   tick(499)
@@ -354,15 +371,10 @@ test('stable tuning starts after automatic string confirmation, not at the first
 })
 
 for (const number of [6, 5, 4, 3, 2, 1]) {
-  test(`live PCM string ${number} drives feedback after confirmation with the debug panel closed`, () => {
+  test(`live PCM string ${number} drives feedback immediately with the debug panel closed`, () => {
     const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index', 'ios')
     recordingEvents.Start()
     const frame = pcmTone(getStringFrequency(number) * 2 ** (-20 / 1200))
-    recordingEvents.FrameRecorded({ frameBuffer: frame })
-    tick(256)
-    recordingEvents.FrameRecorded({ frameBuffer: frame })
-    assert.equal(page.data.debugReading, null)
-    tick(256)
     recordingEvents.FrameRecorded({ frameBuffer: frame })
     assert.equal(page.data.debugOpen, false)
     assert.equal(page.data.debugAutoTarget, number)
@@ -396,13 +408,15 @@ test('manual live input locks the selected string and clears on interruption', (
   assert.equal(page.data.selection.target.number, 6)
 })
 
-test('missing live frames reset confirmation, and simulation cannot confirm stale microphone input', () => {
+test('missing live frames clear feedback, and simulation remains isolated from microphone input', () => {
   const { page, recordingEvents, tick } = createPage(new Map(), false, 'en', 'index')
   recordingEvents.Start()
   recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
   tick(1000)
-  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
   assert.equal(page.data.debugReading, null)
+  recordingEvents.FrameRecorded({ frameBuffer: pcmTone(110) })
+  assert.equal(page.data.debugReading.target.number, 5)
+  assert.equal(page.data.pitchStable, false)
   page.toggleDebugPanel()
   page.debugChangeCents({ detail: { value: 20 } })
   tick(300)
@@ -458,6 +472,17 @@ test('stopped listening uses its status text and a grey marker without asking fo
   assert.match(template, /messages\[recordingHintKey\]/)
   assert.match(template, /color: \{\{listeningStopped \? '#7b8580' : debugMarkerColor\}\}/)
   assert.match(template, /listeningStopped \? '' : pluckHint/)
+})
+
+test('recording waits for a complete pitch window without exposing temporary device diagnostics', () => {
+  const { page, recordingEvents } = createPage(new Map(), false, 'en', 'index', 'ios')
+  recordingEvents.Start()
+  const frame = pcmTone(110)
+  recordingEvents.FrameRecorded({ frameBuffer: frame.slice(0, 6144) })
+  assert.equal(page.data.liveFrequency, '')
+  recordingEvents.FrameRecorded({ frameBuffer: frame.slice(6144) })
+  assert.ok(Math.abs(Number(page.data.liveFrequency) - 110) < .1)
+  for (const key of ['pcmDiagnostics', 'pcmWindows', 'pcmInputState']) assert.equal(key in page.data, false)
 })
 
 test('recording limit and interruption require an explicit continue action', async () => {
@@ -634,33 +659,70 @@ test('manual selection preserves feedback and page exit clears timers and histor
   assert.equal(timers.size, 0)
 })
 
-test('automatic feedback waits 300ms and restarts when candidates change', () => {
-  const { page, tick } = createPage(new Map(), false, 'en', 'index')
+test('automatic feedback identifies immediately and confirms a new string on its second reading', () => {
+  const { page } = createPage(new Map(), false, 'en', 'index')
   page.toggleDebugPanel()
   page.debugChangeCents({ detail: { value: -20 } })
-  const waiting = () => {
-    assert.equal(page.data.debugAutoTarget, 0)
-    assert.equal(page.data.debugReading, null)
-    assert.equal(page.data.debugHintKey, 'pluckString')
-    assert.equal(page.data.debugInTune, false)
-  }
-  waiting()
-  tick(299)
-  waiting()
-  assert.equal(page.data.pitchTrail.length, 0)
-  tick(1)
   assert.equal(page.data.debugAutoTarget, 6)
   assert.equal(page.data.debugHintKey, 'pitchLow')
   page.debugSelectString({ detail: { value: '1' } })
-  waiting()
-  tick(299)
-  waiting()
-  tick(1)
+  assert.equal(page.data.debugAutoTarget, 6)
+  page.debugSelectString({ detail: { value: '1' } })
   assert.equal(page.data.debugAutoTarget, 5, 'Switching does not require the previous string to be in tune')
 })
 
-test('unreliable input, page changes and manual mode discard automatic confirmation history', () => {
-  const { page, tick, hide, show, detach, timers } = createPage(new Map(), false, 'en', 'index')
+const stringPairs = standardTuning.flatMap(({ number: first }) =>
+  standardTuning.filter(string => string.number !== first).map(({ number: other }) => [first, other]))
+for (const [first, other] of stringPairs) {
+  test(`automatic string ${first} filters alternation with ${other} but permits a sustained switch`, () => {
+    const { page, tick } = createPage(new Map(), false, 'en', 'index')
+    const input = number => page.updateLiveReading(getStringFrequency(number) * 2 ** (10 / 1200), 'tone')
+    input(first)
+    assert.equal(page.data.debugAutoTarget, first)
+    for (let i = 0; i < 4; i++) {
+      input(other)
+      assert.equal(page.data.debugAutoTarget, first)
+      assert.equal(page.data.debugDeviation, 10, 'Do not reinterpret another string as a huge tuning error')
+      input(first)
+    }
+    input(other)
+    input(other)
+    assert.equal(page.data.debugAutoTarget, other)
+    input(first)
+    page.updateLiveReading(null, 'uncertain')
+    input(first)
+    assert.equal(page.data.debugAutoTarget, first, 'Unreliable input clears the previous target')
+    input(other)
+    page.updateLiveReading(null, 'silent')
+    tick(1000)
+    input(other)
+    assert.equal(page.data.debugAutoTarget, other, 'A new pluck after silence starts immediately')
+  })
+}
+
+test('changing the pending target restarts the two-reading switch confirmation', () => {
+  const { page } = createPage(new Map(), false, 'en', 'index')
+  const input = number => page.updateLiveReading(getStringFrequency(number) * 2 ** (10 / 1200), 'tone')
+  for (const number of [6, 5, 4, 5]) {
+    input(number)
+    assert.equal(page.data.debugAutoTarget, 6)
+  }
+  input(5)
+  assert.equal(page.data.debugAutoTarget, 5)
+})
+
+test('debug simulation continues through a string-switch confirmation', () => {
+  const { page, tick } = createPage(new Map(), false, 'en', 'index')
+  page.toggleDebugPanel()
+  page.debugChangeCents({ detail: { value: 10 } })
+  page.debugSelectString({ detail: { value: '5' } })
+  assert.equal(page.data.debugAutoTarget, 6)
+  tick(100)
+  assert.equal(page.data.debugAutoTarget, 1)
+})
+
+test('automatic feedback resumes immediately after unreliable input or mode and page changes', () => {
+  const { page, hide, show, detach, timers } = createPage(new Map(), false, 'en', 'index')
   page.toggleDebugPanel()
   const tone = () => page.debugSetState({ currentTarget: { dataset: { state: 'tone' } } })
   for (const interrupt of [
@@ -674,13 +736,9 @@ test('unreliable input, page changes and manual mode discard automatic confirmat
     },
   ]) {
     tone()
-    tick(300)
     assert.equal(page.data.debugAutoTarget, 6)
     interrupt()
     tone()
-    tick(299)
-    assert.equal(page.data.debugReading, null)
-    tick(1)
     assert.equal(page.data.debugAutoTarget, 6)
   }
   detach()
@@ -835,7 +893,6 @@ test('deviations within two cents use a white outline and green-fill state, incl
   page.toggleDebugPanel()
   for (let index = 0; index < 6; index++) {
     page.debugSelectString({ detail: { value: String(index) } })
-    tick(300)
     for (const value of [-2, -1, 0, 1, 2]) {
       page.debugChangeCents({ detail: { value } })
       assert.equal(page.data.debugInTune, true)

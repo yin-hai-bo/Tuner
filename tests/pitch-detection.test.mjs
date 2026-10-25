@@ -24,6 +24,15 @@ for (const sampleRate of [16000, 44100, 48000]) {
   }
 }
 
+test('a recent string change is detected without analysing the older half of the window', () => {
+  const samples = tone(110, 16000)
+  const recent = tone(330, 16000)
+  samples.set(recent.subarray(2048), 2048)
+  const frequency = detectPitch(samples, 16000)
+  assert.notEqual(frequency, null)
+  assert.ok(Math.abs(1200 * Math.log2(frequency / 330)) < 2)
+})
+
 test('detuned fundamentals remain detuned, rather than being snapped to standard tuning', () => {
   for (const number of [6, 5, 4, 3, 2, 1]) {
     for (const cents of [-100, -20, 20, 100]) {
