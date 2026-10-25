@@ -1,0 +1,7 @@
+<template name="usage-notice">
+  <view class="usage-paragraph"><text>{{messages.disclaimerIntro}}<text class="usage-emphasis">{{messages.disclaimerFree}}</text>{{messages.disclaimerReference}}</text></view>
+  <view class="usage-paragraph usage-risk"><text><text class="usage-emphasis">{{messages.disclaimerAutomaticTitle}}</text>{{messages.disclaimerAutomatic}}</text></view>
+  <view class="usage-paragraph usage-risk"><text><text class="usage-emphasis">{{messages.disclaimerManualTitle}}</text>{{messages.disclaimerManual}}</text></view>
+  <view class="usage-paragraph usage-risk"><text>{{messages.disclaimerRisk}}</text></view>
+  <view class="usage-paragraph"><text>{{messages.disclaimerLiability}}</text></view>
+</template>

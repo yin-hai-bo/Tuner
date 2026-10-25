@@ -1,0 +1,4 @@
+.usage-paragraph { color: #b7c2bc; font-size: 26rpx; line-height: 44rpx; }
+.usage-paragraph + .usage-paragraph { margin-top: 24rpx; }
+.usage-risk { color: #e3bd7c; }
+.usage-emphasis { font-weight: 700; }

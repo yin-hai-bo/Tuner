@@ -5,6 +5,39 @@ import { getMessages, getPreferredLanguage } from '../miniprogram/utils/i18n.ts'
 const chinese = { title: '校音器', tune: '校音', subtitle: '六弦吉他 · 标准调弦', settings: '设置', language: '语言', followSystem: '跟随系统', automatic: '自动', manual: '手动', string: '琴弦', chooseString: '（点击弦钮选择琴弦将退出自动模式）', pluckString: '请拨动一根琴弦', pluckSelectedString: '请拨动第 {number} 弦 ({note})', retryMicrophonePermission: '重试', continueListening: '继续调音', recordingInterrupted: '监听已中断，点击继续', recordingEnded: '本次监听已结束，点击继续', recordingError: '录音或临时文件清理失败，请重启小程序', microphonePrivacy: '声音仅用于本地实时调音，不上传、不保留录音。', microphoneRequired: '需要麦克风权限才能调音', openMicrophoneSettings: '开启麦克风权限', microphonePermissionError: '无法获取麦克风权限，请重试', debugTitle: '开发调试', debugCents: '模拟偏差（音分）', debugTone: '模拟音高', debugSilent: '无声', debugUncertain: '无法识别', debugFrequency: '输入', debugCandidate: '候选弦', pitchLow: '偏低，请缓慢拧紧', pitchHigh: '偏高，请缓慢放松', holdPitch: '请保持音高，等待稳定', inTune: '已调准', unreliableInput: '请靠近手机，单独拨响一根琴弦' }
 const english = { title: 'Tuner', tune: 'Tune', subtitle: '6-string guitar · Standard tuning', settings: 'Settings', language: 'Language', followSystem: 'Follow system', automatic: 'Auto', manual: 'Manual', string: 'String', chooseString: '(Selecting a string with a tuning peg exits auto mode)', pluckString: 'Pluck a single string', pluckSelectedString: 'Pluck string {number} ({note})', retryMicrophonePermission: 'Retry', continueListening: 'Continue', recordingInterrupted: 'Listening interrupted. Tap Continue.', recordingEnded: 'Listening ended. Tap Continue.', recordingError: 'Recording or temporary file cleanup failed. Restart the mini program.', microphonePrivacy: 'Audio is used locally for live tuning. No uploads or retained recordings.', microphoneRequired: 'Microphone permission is required to tune', openMicrophoneSettings: 'Enable microphone', microphonePermissionError: 'Could not access microphone permission. Try again.', debugTitle: 'Debug', debugCents: 'Simulated offset (cents)', debugTone: 'Simulate pitch', debugSilent: 'Silence', debugUncertain: 'Unreliable', debugFrequency: 'Input', debugCandidate: 'Candidate', pitchLow: 'Too low, tighten slowly', pitchHigh: 'Too high, loosen slowly', holdPitch: 'Hold the pitch steady', inTune: 'In tune', unreliableInput: 'Move closer and pluck a single string' }
 
+Object.assign(chinese, {
+  disclaimerTitle: '使用须知与免责声明',
+  licenseAgree: '我已了解并同意',
+  licenseAgreeHint: '（勾选同意后才能使用）',
+  licenseStart: '开始使用',
+  licenseSaveError: '无法保存同意状态，请重试。',
+  disclaimerIntro: '本程序',
+  disclaimerFree: '永久免费且无广告',
+  disclaimerReference: '，仅提供音高检测和调音参考，检测结果可能受设备、环境及谐波等因素影响，不保证准确性，不能判断琴弦张力或乐器状态。',
+  disclaimerAutomaticTitle: '自动识弦限制：',
+  disclaimerAutomatic: '自动模式根据检测到的音高推测目标琴弦。当琴弦实际音高与其标准音高偏差较大时，识别结果可能指向其他琴弦，本程序无法保证准确判定实际拨响的琴弦。请勿仅依据自动识别结果持续拧紧琴弦。',
+  disclaimerManualTitle: '手动模式操作提醒：',
+  disclaimerManual: '手动模式仅将所选琴弦的标准音高设为调音目标，不会核实实际拨响或正在调整的是否为该琴弦。操作前请确认所选弦号、实际拨响的琴弦及正在旋拧的弦钮相互对应，避免误调其他琴弦或因过度拉紧造成断弦及其他损害。',
+  disclaimerRisk: '调音存在包括但不限于琴弦断裂、乐器损坏及人身伤害等风险。使用前请检查琴弦和乐器状态，缓慢调整，避免过度拧紧；发现异常张力、异响或不确定如何操作时，请立即停止并寻求专业人员帮助。',
+  disclaimerLiability: '在法律允许的范围内，本程序开发者及运营者不对使用本程序调音过程中发生的琴弦断裂、乐器损坏等事故及相关损失承担责任。本声明不排除或限制依法不得免除或限制的责任。',
+})
+Object.assign(english, {
+  disclaimerTitle: 'Usage notice and disclaimer',
+  licenseAgree: 'I understand and agree',
+  licenseAgreeHint: '(Agreement is required to use this app)',
+  licenseStart: 'Start using',
+  licenseSaveError: 'Could not save your agreement. Please try again.',
+  disclaimerIntro: 'This app is ',
+  disclaimerFree: 'permanently free and ad-free',
+  disclaimerReference: '. It provides pitch detection and tuning guidance for reference only. Results may be affected by your device, surroundings and harmonics. Accuracy is not guaranteed, and the app cannot assess string tension or instrument condition.',
+  disclaimerAutomaticTitle: 'Automatic identification limits: ',
+  disclaimerAutomatic: 'Auto mode infers the target string from the detected pitch. If a string is far from its standard pitch, the app may identify it as a different string. The app cannot guarantee correct identification of the string actually plucked. Do not keep tightening a string solely on the basis of automatic identification.',
+  disclaimerManualTitle: 'Manual mode precautions: ',
+  disclaimerManual: 'Manual mode uses the standard pitch of the selected string as its tuning target. It does not verify that the string being plucked or adjusted matches that selection. Before adjusting, confirm that the selected string number, the string being plucked and the tuning peg being turned all correspond to the same string. This helps avoid adjusting the wrong string or causing string breakage or other damage through excessive tension.',
+  disclaimerRisk: 'Tuning involves risks including, but not limited to, broken strings, instrument damage and personal injury. Check your strings and instrument before use. Adjust slowly and avoid overtightening. Stop immediately and seek professional help if tension or sounds seem unusual, or if you are unsure how to proceed.',
+  disclaimerLiability: 'To the extent permitted by applicable law, the developers and operators of this app are not liable for incidents or losses arising during tuning with this app, including broken strings and instrument damage. This notice does not exclude or limit any liability that cannot lawfully be excluded or limited.',
+})
+
 test('a saved selection overrides the system language', () => {
   assert.equal(getPreferredLanguage('en', 'zh_CN'), 'en')
   assert.equal(getPreferredLanguage('zh-CN', 'en'), 'zh-CN')

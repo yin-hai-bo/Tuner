@@ -1,3 +1,4 @@
+<import src="../../templates/usage-notice.wxml" />
 <view class="settings">
   <text class="heading">{{messages.language}}</text>
   <radio-group class="language-options" bindchange="selectLanguage" aria-label="{{messages.language}}">
@@ -14,4 +15,8 @@
       <radio value="en" checked="{{preference === 'en'}}" color="#00cba9" />
     </label>
   </radio-group>
+  <view class="usage-notice">
+    <text class="notice-title">{{messages.disclaimerTitle}}</text>
+    <template is="usage-notice" data="{{messages: messages}}" />
+  </view>
 </view>

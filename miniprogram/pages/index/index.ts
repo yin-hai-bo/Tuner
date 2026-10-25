@@ -7,6 +7,7 @@ import { createPcmPitchReader, PitchInputState } from '../../utils/pcm-pitch'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../../utils/tuning-selection'
 
 const languageStorageKey = 'preferredLanguage'
+const licenseStorageKey = 'usageNoticeAccepted'
 let trailTimer: ReturnType<typeof setInterval> | undefined
 const confirmAutomaticString = createAutomaticStringConfirmation()
 const confirmStableTuning = createStableTuningConfirmation()
@@ -46,6 +47,10 @@ Component({
     pluckHint: getMessages('en').pluckString,
     microphonePermission: 'unknown' as 'unknown' | 'granted' | 'denied' | 'error',
     permissionBusy: false,
+    licenseAccepted: false,
+    licenseOpen: false,
+    licenseChecked: false,
+    licenseSaveFailed: false,
     ...recordingFeedback('idle'),
     recordingRequested: false,
     pcmBytes: 0,
@@ -88,15 +93,17 @@ Component({
       recordingPage = this
       this.setData({ permissionBusy: false, ...recordingFeedback(recordingState) })
       let savedLanguage: unknown
+      let licenseAccepted = false
       try {
         savedLanguage = wx.getStorageSync(languageStorageKey)
+        licenseAccepted = wx.getStorageSync(licenseStorageKey) === true
       } catch {
         // Storage may be unavailable; continue with the system language.
       }
       const { language } = wx.getAppBaseInfo()
       const { platform } = wx.getDeviceInfo()
       const messages = getMessages(getPreferredLanguage(savedLanguage, language))
-      this.setData({ messages, debugEnabled: platform === 'devtools', microphonePermission: 'unknown' })
+      this.setData({ messages, licenseAccepted, debugEnabled: platform === 'devtools', microphonePermission: 'unknown' })
       this.stopPitchTrail()
       trailTimer = setInterval(() => this.samplePitchTrail(), 100)
       this.updatePluckHint()
@@ -108,7 +115,7 @@ Component({
   },
   methods: {
     startRecording() {
-      if (recordingPage !== this || this.data.microphonePermission !== 'granted') return
+      if (recordingPage !== this || this.data.microphonePermission !== 'granted' || !this.data.licenseAccepted) return
       if (!pcmRecorder) {
         const isDevtools = this.data.debugEnabled
         pcmRecorder = createPcmRecorder(wx.getRecorderManager(),
@@ -152,8 +159,27 @@ Component({
     },
     setMicrophonePermission(microphonePermission: 'granted' | 'denied' | 'error') {
       this.setData({ microphonePermission, permissionBusy: false })
-      if (microphonePermission === 'granted') this.startRecording()
+      if (microphonePermission !== 'granted') return
+      if (this.data.licenseAccepted) this.startRecording()
+      else {
+        this.setData({ licenseOpen: true, licenseChecked: false, licenseSaveFailed: false })
+        wx.hideTabBar({})
+      }
     },
+    changeLicenseAgreement(event: WechatMiniprogram.CheckboxGroupChange) {
+      this.setData({ licenseChecked: event.detail.value.includes('agree'), licenseSaveFailed: false })
+    },
+    acceptLicense() {
+      if (recordingPage !== this || !this.data.licenseOpen || !this.data.licenseChecked) return
+      try { wx.setStorageSync(licenseStorageKey, true) } catch {
+        this.setData({ licenseSaveFailed: true })
+        return
+      }
+      this.setData({ licenseAccepted: true, licenseOpen: false })
+      wx.showTabBar({})
+      this.startRecording()
+    },
+    ignoreLicenseTouch() {},
     requestMicrophonePermission() {
       if (this.data.permissionBusy || this.data.microphonePermission === 'granted') return
       this.setData({ permissionBusy: true })
@@ -207,7 +233,7 @@ Component({
       this.setData({ pitchTrail: [], pitchStable: false, animateSuccess: false })
     },
     samplePitchTrail() {
-      if (successPlaying) return
+      if (this.data.licenseOpen || successPlaying) return
       if (this.data.debugOpen) this.updateDebugReading(this.data.debugState)
       const now = Date.now()
       if (!this.data.debugOpen && lastLiveInputAt !== null && now - lastLiveInputAt >= 1000) {

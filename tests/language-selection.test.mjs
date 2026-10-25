@@ -11,7 +11,7 @@ import { createPcmRecorder } from '../miniprogram/utils/pcm-recorder.ts'
 import { detectPitch } from '../miniprogram/utils/pitch-detection.ts'
 import { getPitchReading, getStringFrequency, selectString, standardTuning, useAutomaticSelection } from '../miniprogram/utils/tuning-selection.ts'
 
-function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools', wxOverrides = {}) {
+function createPage(storage = new Map(), unavailable = false, systemLanguage = 'zh_CN', name = 'settings', platform = 'devtools', wxOverrides = {}, accepted = true) {
   const source = stripTypeScriptTypes(
     readFileSync(new URL(`../miniprogram/pages/${name}/${name}.ts`, import.meta.url), 'utf8')
       .replace(/^import .* from .*\r?\n/gm, ''),
@@ -63,8 +63,10 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
       getSystemInfoSync: () => { throw new Error('Deprecated getSystemInfoSync must not be called') },
       getAppBaseInfo: () => ({ language: systemLanguage }),
       getDeviceInfo: () => ({ platform }),
+      hideTabBar() {}, showTabBar() {},
       getStorageSync: key => {
         if (unavailable) throw new Error('Storage unavailable')
+        if (key === 'usageNoticeAccepted' && !storage.has(key)) return accepted
         return storage.get(key)
       },
       setStorageSync: (key, value) => {
@@ -94,11 +96,91 @@ function createPage(storage = new Map(), unavailable = false, systemLanguage = '
     recordingEvents, recordingStarts, deletedFiles, get recordingStops() { return recordingStops } }
 }
 
-function createPermissionPage() {
+function createPermissionPage(accepted = true) {
   const requests = { getSetting: [], authorize: [], openSetting: [] }
   const overrides = Object.fromEntries(Object.entries(requests).map(([name, calls]) => [name, options => calls.push(options)]))
-  return { ...createPage(new Map(), false, 'en', 'index', 'devtools', overrides), requests }
+  return { ...createPage(new Map(), false, 'en', 'index', 'devtools', overrides, accepted), requests }
 }
+
+test('first microphone grant requires checking and confirming the license before recording', () => {
+  const { page, requests, recordingStarts, show } = createPermissionPage(false)
+  requests.getSetting[0].success({ authSetting: {} })
+  assert.equal(page.data.licenseOpen, false)
+  requests.authorize[0].success()
+  assert.equal(page.data.licenseOpen, true)
+  assert.equal(page.data.licenseChecked, false)
+  page.startRecording()
+  page.acceptLicense()
+  assert.equal(recordingStarts.length, 0)
+  page.changeLicenseAgreement({ detail: { value: ['agree'] } })
+  assert.equal(recordingStarts.length, 0)
+  page.changeLicenseAgreement({ detail: { value: [] } })
+  page.acceptLicense()
+  assert.equal(page.data.licenseOpen, true)
+  page.changeLicenseAgreement({ detail: { value: ['agree'] } })
+  page.acceptLicense()
+  page.acceptLicense()
+  assert.equal(page.data.licenseOpen, false)
+  assert.equal(recordingStarts.length, 1)
+  show()
+  requests.getSetting[1].success({ authSetting: { 'scope.record': true } })
+  assert.equal(page.data.licenseOpen, false)
+})
+
+test('license agreement persists across launches and clearing storage requires it again', () => {
+  const storage = new Map(), tabs = []
+  const open = () => createPage(storage, false, 'en', 'index', 'devtools', {
+    hideTabBar: () => tabs.push('hide'), showTabBar: () => tabs.push('show'),
+  }, false)
+  const { page } = open()
+  assert.equal(page.data.licenseOpen, true, 'Existing microphone permission alone is insufficient')
+  page.changeLicenseAgreement({ detail: { value: ['agree'] } })
+  page.acceptLicense()
+  assert.equal(storage.get('usageNoticeAccepted'), true)
+  assert.deepEqual(tabs, ['hide', 'show'])
+  const returning = open()
+  assert.equal(returning.page.data.licenseOpen, false)
+  assert.equal(returning.recordingStarts.length, 1)
+  storage.clear()
+  const cleared = open()
+  assert.equal(cleared.page.data.licenseOpen, true)
+  assert.equal(cleared.recordingStarts.length, 0)
+})
+
+test('save failure keeps the license open, and a hidden page cannot accept it', () => {
+  let writes = 0
+  const { page, hide, recordingStarts } = createPage(new Map(), false, 'en', 'index', 'devtools', {
+    setStorageSync() { writes++; throw new Error('Storage full') },
+  }, false)
+  page.changeLicenseAgreement({ detail: { value: ['agree'] } })
+  page.acceptLicense()
+  assert.equal(page.data.licenseSaveFailed, true)
+  assert.equal(page.data.licenseOpen, true)
+  assert.equal(recordingStarts.length, 0)
+  hide()
+  page.acceptLicense()
+  assert.equal(writes, 1)
+})
+
+test('permission granted in settings also requires the license', () => {
+  const { page, requests, recordingStarts } = createPermissionPage(false)
+  requests.getSetting[0].success({ authSetting: { 'scope.record': false } })
+  assert.equal(page.data.licenseOpen, false)
+  page.openMicrophoneSettings()
+  requests.openSetting[0].success({ authSetting: { 'scope.record': true } })
+  assert.equal(page.data.licenseOpen, true)
+  assert.equal(recordingStarts.length, 0)
+})
+
+test('license modal only offers a disabled-until-checked confirmation and shows the entire notice', () => {
+  const template = readFileSync(new URL('../miniprogram/pages/index/index.wxml', import.meta.url), 'utf8')
+  const modal = template.slice(template.indexOf('<view wx:if="{{licenseOpen}}"'))
+  assert.match(modal, /disabled="\{\{!licenseChecked\}\}" bindtap="acceptLicense"/)
+  assert.equal((modal.match(/<button\b/g) || []).length, 1)
+  assert.match(modal, /<scroll-view scroll-y/)
+  assert.ok(modal.includes('<template is="usage-notice" data="{{messages: messages}}" />'))
+  assert.doesNotMatch(modal, /bindtap="(?:close|cancel)/i)
+})
 
 test('late permission callbacks cannot request authorization or record after leaving', () => {
   const { page, requests, hide, show, recordingStarts } = createPermissionPage()

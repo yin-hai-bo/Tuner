@@ -1,3 +1,4 @@
+<import src="../../templates/usage-notice.wxml" />
 <view class="tuner">
   <view class="pitch-grid {{debugInTune ? 'in-tune' : ''}}" aria-hidden="true">
     <view class="pitch-trail">
@@ -63,4 +64,21 @@
   <text class="target" wx:if="{{selection.target}}">{{messages.string}} {{selection.target.number}} · {{selection.target.note}}</text>
   <text class="target" wx:elif="{{debugReading}}">{{messages.string}} {{debugReading.target.number}} · {{debugReading.target.note}}</text>
   <text class="target selection-hint" wx:else>{{messages.chooseString}}</text>
+</view>
+<view wx:if="{{licenseOpen}}" class="license-overlay" catchtouchmove="ignoreLicenseTouch">
+  <view class="license-dialog" role="dialog" aria-modal="true" aria-label="{{messages.disclaimerTitle}}">
+    <text class="license-title">{{messages.disclaimerTitle}}</text>
+    <view class="license-textbox">
+      <scroll-view scroll-y class="license-body">
+        <view class="license-content">
+          <template is="usage-notice" data="{{messages: messages}}" />
+        </view>
+      </scroll-view>
+    </view>
+    <checkbox-group bindchange="changeLicenseAgreement">
+      <label class="license-agreement"><checkbox value="agree" checked="{{licenseChecked}}" color="#00cba9" /><text class="license-agreement-copy">{{messages.licenseAgree}}<text class="license-agreement-hint">{{messages.licenseAgreeHint}}</text></text></label>
+    </checkbox-group>
+    <text wx:if="{{licenseSaveFailed}}" class="license-error">{{messages.licenseSaveError}}</text>
+    <button class="license-start" disabled="{{!licenseChecked}}" bindtap="acceptLicense">{{messages.licenseStart}}</button>
+  </view>
 </view>
